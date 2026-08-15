@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-types
+.git
+.gitignore
+.env*.local
+README.md
+docs
+Dockerfile

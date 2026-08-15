@@ -1,0 +1,26 @@
+services:
+  frontend:
+    image: node:20-alpine
+    container_name: frontend
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./FE:/app
+      - /app/node_modules
+    ports:
+      - "80:5173"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    command: sh -c "[ -d node_modules ] || npm install; npm run dev -- --host 0.0.0.0 --port 5173"
+
+  backend:
+    image: golang:1.22-alpine
+    container_name: backend
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./BE:/app
+    ports:
+      - "5000:5000"
+    command: sh -c "go mod tidy && go run main.go"

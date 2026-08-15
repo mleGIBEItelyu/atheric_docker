@@ -1,0 +1,11 @@
+*.exe
+*.dll
+*.so
+*.dylib
+/data/*.db
+/data/*.db-journal
+atheric-be
+.env
+.env.*
+*.env
+

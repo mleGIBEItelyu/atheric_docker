@@ -1,0 +1,10 @@
+node_modules
+FE/node_modules
+FE/dist
+BE/data
+*.db
+*.db-journal
+.git
+.gitignore
+README.md
+docs
