@@ -1,26 +1,48 @@
-services:
-  frontend:
-    image: node:20-alpine
-    container_name: frontend
-    restart: unless-stopped
-    working_dir: /app
-    volumes:
-      - ./FE:/app
-      - /app/node_modules
-    ports:
-      - "80:5173"
-    environment:
-      - CHOKIDAR_USEPOLLING=true
-      - WATCHPACK_POLLING=true
-    command: sh -c "[ -d node_modules ] || npm install; npm run dev -- --host 0.0.0.0 --port 5173"
+version: '3.8'
 
-  backend:
+services:
+  backend-dev:
     image: golang:1.22-alpine
-    container_name: backend
+    container_name: atheric_backend_dev
     restart: unless-stopped
     working_dir: /app
     volumes:
       - ./BE:/app
     ports:
       - "5000:5000"
+    environment:
+      - PORT=5000
+      - DB_PATH=data/atheric.db
+      - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173
+      - JWT_SECRET=${JWT_SECRET:-atheric_ai_super_secret_jwt_key_2026_change_in_prod}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-Atheric AI <onboarding@resend.dev>}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
     command: sh -c "go mod tidy && go run main.go"
+    networks:
+      - atheric-dev-net
+
+  frontend-dev:
+    image: node:20-alpine
+    container_name: atheric_frontend_dev
+    restart: unless-stopped
+    working_dir: /app
+    volumes:
+      - ./FE:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:5000
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    command: sh -c "[ -d node_modules ] || npm install; npm run dev -- --host 0.0.0.0 --port 5173"
+    depends_on:
+      - backend-dev
+    networks:
+      - atheric-dev-net
+
+networks:
+  atheric-dev-net:
+    driver: bridge
