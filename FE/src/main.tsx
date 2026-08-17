@@ -6,7 +6,7 @@ import { App } from './App'
 import { ToastProvider } from '@/components/common/Toast'
 import './styles/globals.css'
 
-// ── Apply saved theme immediately before first render (prevents flicker) ──
+// Apply saved theme before initial render
 ;(function applyStoredTheme() {
   try {
     const raw = localStorage.getItem('terminal_settings')

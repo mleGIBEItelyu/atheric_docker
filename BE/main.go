@@ -11,6 +11,7 @@ import (
 	"atheric-be/database"
 	"atheric-be/handlers"
 	"atheric-be/middleware"
+	"atheric-be/services"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -21,11 +22,10 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// loadEnvFile reads a .env file and sets environment variables for Go backend
 func loadEnvFile(filename string) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return // .env optional or not found
+		return
 	}
 
 	lines := strings.Split(string(data), "\n")
@@ -48,60 +48,59 @@ func loadEnvFile(filename string) {
 			}
 		}
 	}
-	log.Printf("[ENV] Loaded environment variables from %s", filename)
+	log.Printf("[ENV] Loaded %s", filename)
 }
 
 func main() {
-	// Auto-load .env or .env.local configuration file if present
 	loadEnvFile(".env")
 	loadEnvFile(".env.local")
 
-	// Initialize SQLite Database & Seeding
 	database.InitDB()
+	services.InitGenesisManager()
 
-	// Configure Fiber with strict Payload Limits (Anti-Payload Bombing via Burp Suite)
 	app := fiber.New(fiber.Config{
 		AppName:               "Atheric AI Financial API",
-		BodyLimit:             2 * 1024 * 1024, // Max 2MB request body (Prevents memory exhaustion attacks)
+		BodyLimit:             2 * 1024 * 1024,
 		ReadTimeout:           15 * time.Second,
 		WriteTimeout:          15 * time.Second,
 		IdleTimeout:           60 * time.Second,
 		DisableStartupMessage: false,
 	})
 
-	// Panic Recovery Middleware (Prevents server crash on unhandled panics)
 	app.Use(recover.New(recover.Config{
-		EnableStackTrace: true,
+		EnableStackTrace: false,
 	}))
 
-	// Enterprise Security Headers Middleware (OWASP Defense)
+	// Enterprise Security Headers (OWASP & Production Hardening)
 	app.Use(func(c *fiber.Ctx) error {
 		c.Set("X-Content-Type-Options", "nosniff")
 		c.Set("X-Frame-Options", "SAMEORIGIN")
 		c.Set("X-XSS-Protection", "1; mode=block")
 		c.Set("Referrer-Policy", "strict-origin-when-cross-origin")
-		c.Set("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
+		c.Set("Permissions-Policy", "accelerometer=(), camera=(), geolocation=(), gyroscope=(), magnetometer=(), microphone=(), payment=(), usb=()")
+		c.Set("Cross-Origin-Opener-Policy", "same-origin")
+		c.Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' ws: wss: http: https:;")
 		return c.Next()
 	})
 
-	// Logger & Traffic Metrics Middleware
+	// Active Web Application Firewall (WAF) Payload Inspector
+	app.Use(middleware.WAFSanitizer())
+	app.Use(middleware.BotProtection())
+
 	app.Use(logger.New())
 	app.Use(middleware.TrafficLogger())
 
-	// CORS Middleware - Configurable via ALLOWED_ORIGINS
 	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
 	if allowedOrigins == "" || allowedOrigins == "*" {
-		log.Println("[CORS NOTICE] ALLOWED_ORIGINS wildcard or empty detected, defaulting to local dev domains for security")
 		allowedOrigins = "http://localhost:5173, http://localhost:3000, http://127.0.0.1:5173"
 	}
 
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: allowedOrigins,
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization",
+		AllowHeaders: "Origin, Content-Type, Accept, Authorization, X-Genesis-Key",
 		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
 	}))
 
-	// WebSocket Upgrade Check & Auth Middleware for Admin Traffic Monitoring
 	app.Use("/api/ws/monitor", func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
 			tokenStr := c.Query("token")
@@ -148,9 +147,6 @@ func main() {
 		return fiber.ErrUpgradeRequired
 	})
 
-	// --- Anti-Spam / Anti-Burp Suite Rate Limiters ---
-
-	// 1. Global API Limiter: Max 60 requests per 1 minute per IP (Protects all endpoints from DoS/scraping)
 	globalLimiter := limiter.New(limiter.Config{
 		Max:        60,
 		Expiration: 1 * time.Minute,
@@ -159,12 +155,11 @@ func main() {
 		},
 		LimitReached: func(c *fiber.Ctx) error {
 			return c.Status(429).JSON(fiber.Map{
-				"error": "Global rate limit exceeded. Please slow down your requests.",
+				"error": "Rate limit exceeded. Silakan coba sesaat lagi.",
 			})
 		},
 	})
 
-	// 2. Login Limiter: Max 5 attempts per 1 minute per IP (Anti-Brute Force / Credential Stuffing)
 	loginLimiter := limiter.New(limiter.Config{
 		Max:        5,
 		Expiration: 1 * time.Minute,
@@ -173,12 +168,11 @@ func main() {
 		},
 		LimitReached: func(c *fiber.Ctx) error {
 			return c.Status(429).JSON(fiber.Map{
-				"error": "Too many login attempts. Please try again after 1 minute.",
+				"error": "Terlalu banyak percobaan login. Coba lagi dalam 1 menit.",
 			})
 		},
 	})
 
-	// 3. Ticket Spam Limiter: Max 3 support tickets per 5 minutes per IP (Anti-DB Flooding)
 	ticketLimiter := limiter.New(limiter.Config{
 		Max:        3,
 		Expiration: 5 * time.Minute,
@@ -187,22 +181,20 @@ func main() {
 		},
 		LimitReached: func(c *fiber.Ctx) error {
 			return c.Status(429).JSON(fiber.Map{
-				"error": "Support ticket submission limit reached. Please wait 5 minutes before submitting another ticket.",
+				"error": "Batas pengiriman tiket tercapai. Coba lagi dalam 5 menit.",
 			})
 		},
 	})
 
-	// WebSocket Monitor Route
 	app.Get("/api/ws/monitor", websocket.New(handlers.WSMonitor))
 
-	// API Route Group (Protected by Global Rate Limiter)
 	api := app.Group("/api", globalLimiter)
 
-	// --- Public Routes ---
+	// Public Routes
 	api.Get("/health", handlers.HealthCheck)
-	api.Post("/auth/login", loginLimiter, middleware.BotProtection(), handlers.Login)                 // Strict Anti-Brute Force & Bot Protection
-	api.Post("/auth/register", loginLimiter, middleware.BotProtection(), handlers.Register)           // Self-registration & Bot Protection
-	api.Post("/auth/verify-code", loginLimiter, middleware.BotProtection(), handlers.VerifyEmailCode)  // OTP Verification
+	api.Post("/auth/login", loginLimiter, middleware.BotProtection(), handlers.Login)
+	api.Post("/auth/register", loginLimiter, middleware.BotProtection(), handlers.Register)
+	api.Post("/auth/verify-code", loginLimiter, middleware.BotProtection(), handlers.VerifyEmailCode)
 	api.Post("/auth/resend-code", loginLimiter, middleware.BotProtection(), handlers.ResendVerificationCode)
 	api.Get("/indices", handlers.GetIndices)
 	api.Get("/stocks", handlers.GetStocks)
@@ -216,13 +208,17 @@ func main() {
 	api.Get("/evaluations", handlers.GetEvaluations)
 	api.Get("/news", handlers.GetNews)
 	api.Get("/stocks/:ticker/news", handlers.GetNews)
-	api.Post("/tickets", ticketLimiter, handlers.CreateSupportTicket) // Strict Anti-Spam (3 req/5min)
+	api.Post("/tickets", ticketLimiter, handlers.CreateSupportTicket)
 
-	// --- AI Generation Proxy Routes ---
+	// AI & Genesis Model Routes
 	api.Get("/ai/status", handlers.GetAIStatus)
 	api.Post("/ai/generate", handlers.GenerateAIResponse)
+	api.Get("/genesis/summary", handlers.GetGenesisSummary)
+	api.Get("/genesis/release", handlers.GetGenesisRelease)
+	api.Get("/genesis/metrics", handlers.GetGenesisMetrics)
+	api.Get("/genesis/config", handlers.GetGenesisConfig)
 
-	// --- Protected User Routes (Requires JWT Token) ---
+	// User Routes
 	protected := api.Group("", middleware.Protected())
 	protected.Get("/auth/me", handlers.GetMe)
 	protected.Get("/watchlist", handlers.GetWatchlist)
@@ -232,7 +228,7 @@ func main() {
 	protected.Get("/sessions", handlers.GetDeviceSessions)
 	protected.Delete("/sessions/:id", handlers.RevokeDeviceSession)
 
-	// --- Protected Admin Routes (Requires Admin Role) ---
+	// Admin Routes
 	admin := protected.Group("/admin", middleware.AdminOnly())
 	admin.Get("/users", handlers.GetUsersByAdmin)
 	admin.Post("/users", handlers.CreateUserByAdmin)
@@ -242,10 +238,11 @@ func main() {
 	admin.Delete("/users/:id", handlers.DeleteUserByAdmin)
 	admin.Get("/traffic", handlers.GetTrafficStatsHTTP)
 	admin.Get("/activity-logs", handlers.GetActivityLogsByAdmin)
+	admin.Post("/genesis/reload", handlers.ReloadGenesis)
+	admin.Get("/genesis/token", handlers.GetDynamicGenesisToken)
 
-	// --- Serve Frontend Static Files & SPA Fallback ---
+	// Static SPA Fallback
 	if _, err := os.Stat("./public"); err == nil {
-		log.Println("Serving Frontend static files from ./public directory")
 		app.Static("/", "./public", fiber.Static{
 			Compress: true,
 		})
@@ -262,20 +259,18 @@ func main() {
 		port = "5000"
 	}
 
-	// Graceful Shutdown Channel
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 
 	go func() {
-		log.Printf("Starting Atheric AI Go Backend server on port %s...", port)
+		log.Printf("Server aktif di port %s", port)
 		if err := app.Listen(":" + port); err != nil {
 			log.Printf("Server stopped: %v", err)
 		}
 	}()
 
 	<-stop
-	log.Println("Gracefully shutting down Atheric AI server...")
+	log.Println("Shutting down server...")
 	_ = app.Shutdown()
-	log.Println("Server gracefully stopped.")
+	log.Println("Server stopped.")
 }
-

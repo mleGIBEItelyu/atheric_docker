@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react'
 
-// ─── Dummy Evaluation Data ─────────────────────────────────────────────────
 interface MonthEval {
   month: string         // "Jan 2025"
   period: string        // e.g. "Des 2024 → Jan 2025"
@@ -142,7 +141,6 @@ const EVAL_DATA: MonthEval[] = [
   },
 ]
 
-// ─── Donut / Gauge SVG ────────────────────────────────────────────────────
 function AccuracyGauge({ pct, size = 96 }: { pct: number; size?: number }) {
   const r = 38
   const circ = 2 * Math.PI * r
@@ -164,13 +162,11 @@ function AccuracyGauge({ pct, size = 96 }: { pct: number; size?: number }) {
         fill="var(--text)" fontSize="18" fontWeight="800"
         style={{ transform: 'rotate(90deg) translateX(-0px)', transformOrigin: '50% 50%' }}
       >
-        {/* label rendered separately below */}
       </text>
     </svg>
   )
 }
 
-// ─── Horizontal bar ───────────────────────────────────────────────────────
 function Bar({ pct, color }: { pct: number; color: string }) {
   return (
     <div style={{ flex: 1, height: '6px', borderRadius: '999px', background: 'var(--border-strong)', overflow: 'hidden' }}>
@@ -179,7 +175,6 @@ function Bar({ pct, color }: { pct: number; color: string }) {
   )
 }
 
-// ─── Main Page ────────────────────────────────────────────────────────────
 export function Evaluasi() {
   const [selectedIdx, setSelectedIdx] = useState(0)
   const [detailOpen, setDetailOpen] = useState(false)
