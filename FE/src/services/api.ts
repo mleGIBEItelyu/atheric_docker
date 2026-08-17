@@ -242,10 +242,35 @@ export async function submitSupportTicketApi(ticket: {
   }
 }
 
+// --- Offline & Low-Bandwidth Local Persistence Helper ---
+
+function saveToLocalCache(key: string, data: any) {
+  try {
+    localStorage.setItem(`ath_cache_${key}`, JSON.stringify({
+      data,
+      savedAt: Date.now(),
+    }))
+  } catch {
+    // ignore quota errors
+  }
+}
+
+function loadFromLocalCache<T>(key: string): T | null {
+  try {
+    const raw = localStorage.getItem(`ath_cache_${key}`)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed.data as T
+  } catch {
+    return null
+  }
+}
+
 // --- Stock Data & AI Forecasting Endpoints ---
 
 export async function fetchStock(ticker = 'BBCA'): Promise<Stock> {
   const fallback = getDummyStock(ticker)
+  const cacheKey = `stock_${ticker}`
   try {
     const res = await fetch(`${BASE_URL}/api/stock/${ticker}`, {
       headers: getAuthHeaders(),
@@ -253,7 +278,7 @@ export async function fetchStock(ticker = 'BBCA'): Promise<Stock> {
     if (res.ok) {
       const data = await res.json()
       if (data && data.ticker) {
-        return {
+        const result: Stock = {
           ticker: data.ticker,
           initial: data.ticker.slice(0, 2),
           name: data.name || fallback.name,
@@ -263,16 +288,20 @@ export async function fetchStock(ticker = 'BBCA'): Promise<Stock> {
           ohlc: fallback.ohlc,
           ratios: fallback.ratios,
         }
+        saveToLocalCache(cacheKey, result)
+        return result
       }
     }
   } catch (err) {
-    console.warn(`Failed to fetch stock ${ticker} from backend, using fallback:`, err)
+    console.warn(`[Network Low/Offline] Loading stock ${ticker} from local cache:`, err)
   }
-  return fallback
+  const cached = loadFromLocalCache<Stock>(cacheKey)
+  return cached || fallback
 }
 
 export async function fetchForecast(ticker = 'BBCA', range = '3M'): Promise<ForecastData> {
   const fallback = getDummyForecast(ticker, range)
+  const cacheKey = `forecast_${ticker}_${range}`
   try {
     const res = await fetch(`${BASE_URL}/api/forecast/${ticker}?range=${range}`, {
       headers: getAuthHeaders(),
@@ -286,7 +315,7 @@ export async function fetchForecast(ticker = 'BBCA', range = '3M'): Promise<Fore
         const step = Math.round((yMax - yMin) / 4)
         const yTicks = [yMin, yMin + step, yMin + step * 2, yMin + step * 3, yMax]
 
-        return {
+        const result: ForecastData = {
           title: data.model || 'Proyeksi Harga Generative Financial AI',
           caption: data.signal ? `Sinyal Model: ${data.signal} • Horizon ${data.horizonDays || 20} Hari Trading` : fallback.caption,
           ranges: fallback.ranges,
@@ -301,16 +330,20 @@ export async function fetchForecast(ticker = 'BBCA', range = '3M'): Promise<Fore
           ciLower: data.ciLower || fallback.ciLower,
           volume: fallback.volume,
         }
+        saveToLocalCache(cacheKey, result)
+        return result
       }
     }
   } catch (err) {
-    console.warn(`Failed to fetch forecast for ${ticker} from backend, using fallback:`, err)
+    console.warn(`[Network Low/Offline] Loading forecast for ${ticker} from local cache:`, err)
   }
-  return fallback
+  const cached = loadFromLocalCache<ForecastData>(cacheKey)
+  return cached || fallback
 }
 
 export async function fetchTarget(ticker = 'BBCA'): Promise<TargetData> {
   const fallback = getDummyTarget(ticker)
+  const cacheKey = `target_${ticker}`
   try {
     const res = await fetch(`${BASE_URL}/api/target/${ticker}`, {
       headers: getAuthHeaders(),
@@ -318,7 +351,7 @@ export async function fetchTarget(ticker = 'BBCA'): Promise<TargetData> {
     if (res.ok) {
       const data = await res.json()
       if (data && data.targetPrice) {
-        return {
+        const result: TargetData = {
           title: data.model || fallback.title,
           price: data.targetPrice,
           rec: data.rec || fallback.rec,
@@ -331,12 +364,15 @@ export async function fetchTarget(ticker = 'BBCA'): Promise<TargetData> {
           riskReward: data.riskReward,
           confidence: data.confidence,
         }
+        saveToLocalCache(cacheKey, result)
+        return result
       }
     }
   } catch (err) {
-    console.warn(`Failed to fetch target for ${ticker} from backend, using fallback:`, err)
+    console.warn(`[Network Low/Offline] Loading target for ${ticker} from local cache:`, err)
   }
-  return fallback
+  const cached = loadFromLocalCache<TargetData>(cacheKey)
+  return cached || fallback
 }
 
 export async function fetchKeyLevels(ticker = 'BBCA'): Promise<KeyLevel[]> {
@@ -441,6 +477,7 @@ export async function fetchRankingHighlights(): Promise<RankingHighlight[]> {
 }
 
 export async function fetchRankingRows(): Promise<RankingRow[]> {
+  const cacheKey = 'ranking_rows_all'
   try {
     const res = await fetch(`${BASE_URL}/api/stocks`, {
       headers: getAuthHeaders(),
@@ -448,24 +485,27 @@ export async function fetchRankingRows(): Promise<RankingRow[]> {
     if (res.ok) {
       const data = await res.json()
       if (Array.isArray(data) && data.length > 0) {
-        return data.map((s: any, idx: number) => ({
+        const rows: RankingRow[] = data.map((s: any, idx: number) => ({
           rank: idx + 1,
           ticker: s.ticker,
           company: s.name,
           score: s.confidenceLevel ? `${s.confidenceLevel.toFixed(1)}` : '90.0',
           ret: s.changePercent !== undefined ? `${s.changePercent >= 0 ? '+' : ''}${s.changePercent.toFixed(1)}%` : '+5.0%',
-          dir: (s.changePercent !== undefined ? s.changePercent >= 0 : s.change >= 0) ? 'up' : 'down',
+          dir: ((s.changePercent !== undefined ? s.changePercent >= 0 : s.change >= 0) ? 'up' : 'down') as 'up' | 'down',
           conf: (s.confidenceLevel || 80) >= 90 ? 'High' : (s.confidenceLevel || 80) >= 75 ? 'Med' : 'Low',
           confPct: Math.round(s.confidenceLevel || 80),
           rec: s.signal || 'BUY',
           cap: s.category === 'Banking' ? 'Rp 1.170T' : s.category === 'Telco' ? 'Rp 213T' : 'Rp 218T',
         }))
+        saveToLocalCache(cacheKey, rows)
+        return rows
       }
     }
   } catch (err) {
-    console.warn('Failed to fetch stocks from backend, using fallback:', err)
+    console.warn('[Network Low/Offline] Loading ranking rows from local cache:', err)
   }
-  return RANKING_ROWS
+  const cached = loadFromLocalCache<RankingRow[]>(cacheKey)
+  return cached || RANKING_ROWS
 }
 
 export async function fetchIndices(): Promise<IndexData[]> {

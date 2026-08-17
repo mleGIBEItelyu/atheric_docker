@@ -28,12 +28,29 @@ func InitDB() *gorm.DB {
 		log.Fatalf("Failed to create database directory: %v", err)
 	}
 
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
+		PrepareStmt: true, // Cache prepared statements for fast execution
+	})
 	if err != nil {
 		log.Fatalf("Failed to connect database: %v", err)
 	}
 
-	log.Println("Database connection established (SQLite). Running migrations...")
+	// Optimize SQLite PRAGMAs for high-concurrency low-spec VPS
+	db.Exec("PRAGMA journal_mode = WAL;")
+	db.Exec("PRAGMA synchronous = NORMAL;")
+	db.Exec("PRAGMA cache_size = -32000;")
+	db.Exec("PRAGMA temp_store = MEMORY;")
+	db.Exec("PRAGMA mmap_size = 268435456;")
+	db.Exec("PRAGMA busy_timeout = 5000;")
+
+	// Connection Pool limits to avoid thread explosion on budget VPS
+	sqlDB, err := db.DB()
+	if err == nil {
+		sqlDB.SetMaxOpenConns(50)
+		sqlDB.SetMaxIdleConns(10)
+	}
+
+	log.Println("Database connection established (SQLite WAL Mode). Running migrations...")
 
 	// Auto-migrate schema tables
 	err = db.AutoMigrate(

@@ -316,13 +316,24 @@ func GetMe(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
-// GetStocks returns all market stocks
+// GetStocks returns all market stocks (accelerated via in-memory RAM cache)
 func GetStocks(c *fiber.Ctx) error {
+	c.Set("Cache-Control", "public, max-age=60, stale-while-revalidate=300")
+	if cached, ok := services.GlobalRAMCache.Get("api_stocks_all"); ok {
+		c.Set("Content-Type", "application/json")
+		return c.Send(cached)
+	}
+
 	var stocks []models.Stock
 	result := database.DB.Find(&stocks)
 	if result.Error != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch stocks"})
 	}
+
+	if b, err := json.Marshal(stocks); err == nil {
+		services.GlobalRAMCache.Set("api_stocks_all", b, 60*time.Second)
+	}
+
 	return c.JSON(stocks)
 }
 
@@ -405,12 +416,18 @@ func CreateSupportTicket(c *fiber.Ctx) error {
 
 
 
-// GetEvaluations returns AI performance evaluation metrics
+// GetEvaluations returns AI performance evaluation metrics (cached in RAM for 300s)
 func GetEvaluations(c *fiber.Ctx) error {
+	c.Set("Cache-Control", "public, max-age=300, stale-while-revalidate=86400")
+	if cached, ok := services.GlobalRAMCache.Get("api_evaluations"); ok {
+		c.Set("Content-Type", "application/json")
+		return c.Send(cached)
+	}
+
 	var evals []models.Evaluation
 	database.DB.Find(&evals)
 
-	// Dynamically integrate Genesis 2.0 metrics if loaded
+	// Dynamically integrate Genesis metrics if loaded
 	if services.GlobalGenesisManager != nil {
 		if summary, err := services.GlobalGenesisManager.GetSummary(); err == nil && summary != nil {
 			genesisEval := models.Evaluation{
@@ -430,10 +447,16 @@ func GetEvaluations(c *fiber.Ctx) error {
 					combined = append(combined, e)
 				}
 			}
+			if b, err := json.Marshal(combined); err == nil {
+				services.GlobalRAMCache.Set("api_evaluations", b, 300*time.Second)
+			}
 			return c.JSON(combined)
 		}
 	}
 
+	if b, err := json.Marshal(evals); err == nil {
+		services.GlobalRAMCache.Set("api_evaluations", b, 300*time.Second)
+	}
 	return c.JSON(evals)
 }
 
@@ -599,14 +622,14 @@ func GetStockDetail(c *fiber.Ctx) error {
 	return c.JSON(stock)
 }
 
-// GetForecast returns dynamic model-driven forecasting data for ticker (cached in DB monthly)
+// GetForecast returns dynamic model-driven forecasting data for ticker (cached in DB daily)
 func GetForecast(c *fiber.Ctx) error {
 	ticker := strings.ToUpper(c.Params("ticker"))
-	periodMonth := time.Now().Format("2006-01")
+	periodDate := time.Now().Format("2006-01-02")
 
 	// 1. Check DB Cache
 	var cached models.ModelForecastCache
-	if err := database.DB.Where("ticker = ? AND period_month = ?", ticker, periodMonth).First(&cached).Error; err == nil {
+	if err := database.DB.Where("ticker = ? AND period_month = ?", ticker, periodDate).First(&cached).Error; err == nil {
 		if time.Now().Before(cached.ExpiresAt) && cached.ForecastJSON != "" {
 			var intActual, intForecast, intCIUpper, intCILower []int
 			_ = json.Unmarshal([]byte(cached.HistoricalJSON), &intActual)
@@ -624,12 +647,12 @@ func GetForecast(c *fiber.Ctx) error {
 				"ciUpper":     intCIUpper,
 				"ciLower":     intCILower,
 				"cached":      true,
-				"periodMonth": cached.PeriodMonth,
+				"periodDate":  cached.PeriodMonth,
 			})
 		}
 	}
 
-	// 2. Cache Miss or Expired: Compute from Model
+	// 2. Cache Miss or New Day: Compute from Model
 	price := 10250.0
 	signal := "BUY"
 	confidence := 86.0
@@ -667,10 +690,10 @@ func GetForecast(c *fiber.Ctx) error {
 		upperB, _ := json.Marshal(intCIUpper)
 		lowerB, _ := json.Marshal(intCILower)
 
-		// Persist into DB with 30-day (1 month) expiry
+		// Persist into DB with 24-hour daily expiry
 		newCache := models.ModelForecastCache{
 			Ticker:         ticker,
-			PeriodMonth:    periodMonth,
+			PeriodMonth:    periodDate,
 			ModelName:      forecast.ModelName,
 			HorizonDays:    forecast.HorizonDays,
 			Signal:         forecast.Signal,
@@ -684,7 +707,7 @@ func GetForecast(c *fiber.Ctx) error {
 			CIUpperJSON:    string(upperB),
 			CILowerJSON:    string(lowerB),
 			CachedAt:       time.Now(),
-			ExpiresAt:      time.Now().AddDate(0, 1, 0),
+			ExpiresAt:      time.Now().Add(24 * time.Hour),
 		}
 		database.DB.Save(&newCache)
 
@@ -698,7 +721,7 @@ func GetForecast(c *fiber.Ctx) error {
 			"ciUpper":     intCIUpper,
 			"ciLower":     intCILower,
 			"cached":      false,
-			"periodMonth": periodMonth,
+			"periodDate":  periodDate,
 		})
 	}
 
@@ -711,14 +734,14 @@ func GetForecast(c *fiber.Ctx) error {
 	})
 }
 
-// GetTarget returns dynamic model-driven price target and recommendation (cached in DB monthly)
+// GetTarget returns dynamic model-driven price target and recommendation (cached in DB daily)
 func GetTarget(c *fiber.Ctx) error {
 	ticker := strings.ToUpper(c.Params("ticker"))
-	periodMonth := time.Now().Format("2006-01")
+	periodDate := time.Now().Format("2006-01-02")
 
 	// 1. Check DB Cache
 	var cached models.ModelForecastCache
-	if err := database.DB.Where("ticker = ? AND period_month = ?", ticker, periodMonth).First(&cached).Error; err == nil {
+	if err := database.DB.Where("ticker = ? AND period_month = ?", ticker, periodDate).First(&cached).Error; err == nil {
 		if time.Now().Before(cached.ExpiresAt) && cached.TargetPrice > 0 {
 			rec := "BUY"
 			if cached.Signal == "BEARISH" {
@@ -1373,14 +1396,23 @@ func GetAIStatus(c *fiber.Ctx) error {
 
 // --- GENESIS MODEL ARTIFACT HANDLERS ---
 
-// GetGenesisSummary returns consolidated performance metrics & model status
+// GetGenesisSummary returns consolidated performance metrics & model status (cached in RAM for 300s)
 func GetGenesisSummary(c *fiber.Ctx) error {
+	c.Set("Cache-Control", "public, max-age=300, stale-while-revalidate=86400")
+	if cached, ok := services.GlobalRAMCache.Get("api_genesis_summary"); ok {
+		c.Set("Content-Type", "application/json")
+		return c.Send(cached)
+	}
+
 	if services.GlobalGenesisManager == nil {
 		return c.Status(503).JSON(fiber.Map{"error": "Genesis Manager belum diinisialisasi"})
 	}
 	summary, err := services.GlobalGenesisManager.GetSummary()
 	if err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": err.Error()})
+	}
+	if b, err := json.Marshal(summary); err == nil {
+		services.GlobalRAMCache.Set("api_genesis_summary", b, 300*time.Second)
 	}
 	return c.JSON(summary)
 }

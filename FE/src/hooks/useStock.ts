@@ -13,60 +13,65 @@ export const stockKeys = {
   news: (ticker: string) => [...stockKeys.all, 'news', ticker] as const,
 }
 
-const ONE_DAY_MS = 1000 * 60 * 60 * 24
-
+// Data Harga Saham Harian (Fresh 30 detik)
 export function useStock(ticker = 'BBCA') {
   return useQuery({
     queryKey: stockKeys.stock(ticker),
     queryFn: () => fetchStock(ticker),
-    staleTime: ONE_DAY_MS,
+    staleTime: 30 * 1000,
   })
 }
 
+// Proyeksi Harga Dinamis AI Harian
 export function useForecast(ticker = 'BBCA', range = '3M') {
   return useQuery({
     queryKey: stockKeys.forecast(ticker, range),
     queryFn: () => fetchForecast(ticker, range),
-    staleTime: ONE_DAY_MS, // Monthly forecast cached fresh for 24 hours
+    staleTime: 10 * 60 * 1000,
   })
 }
 
+// Target Harga & Rekomendasi Dinamis Harian
 export function useTarget(ticker = 'BBCA') {
   return useQuery({
     queryKey: stockKeys.target(ticker),
     queryFn: () => fetchTarget(ticker),
-    staleTime: ONE_DAY_MS,
+    staleTime: 10 * 60 * 1000,
   })
 }
 
+// Key Levels Support & Resistance Harian
 export function useKeyLevels(ticker = 'BBCA') {
   return useQuery({
     queryKey: stockKeys.keylevels(ticker),
     queryFn: () => fetchKeyLevels(ticker),
-    staleTime: ONE_DAY_MS,
+    staleTime: 10 * 60 * 1000,
   })
 }
 
+// Sentimen Kuantitatif Pasar Harian
 export function useSentiment(ticker = 'BBCA') {
   return useQuery({
     queryKey: stockKeys.sentiment(ticker),
     queryFn: () => fetchSentiment(ticker),
-    staleTime: ONE_DAY_MS,
+    staleTime: 5 * 60 * 1000,
   })
 }
 
+// Sintesis Analisis AI Harian
 export function useSynthesis(ticker = 'BBCA') {
   return useQuery({
     queryKey: stockKeys.synthesis(ticker),
     queryFn: () => fetchSynthesis(ticker),
-    staleTime: ONE_DAY_MS,
+    staleTime: 5 * 60 * 1000,
   })
 }
 
+// Berita Pasar Real-Time Harian
 export function useNews(ticker = 'BBCA') {
   return useQuery({
     queryKey: stockKeys.news(ticker),
     queryFn: () => fetchNews(ticker),
-    staleTime: 1000 * 60 * 15,
+    staleTime: 60 * 1000,
   })
 }
