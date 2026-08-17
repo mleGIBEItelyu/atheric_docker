@@ -1,6 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
 import { GridIcon, BarsIcon, EyeIcon, GearIcon, HelpIcon, ClipboardIcon, BellIcon } from '@/components/common/icons'
-import { NAV_ITEMS } from '@/data/dummy'
+import { NAV_ITEMS } from '@/data/constants'
 import { useAuth } from '@/context/AuthContext'
 
 const ICON_MAP: Record<string, React.ReactNode> = {

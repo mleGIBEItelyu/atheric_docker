@@ -1,13 +1,4 @@
-import {
-  getDummyStock,
-  getDummyForecast,
-  getDummyTarget,
-  getDummySentiment,
-  getDummyNews,
-  RANKING_ROWS,
-  RANKING_HIGHLIGHTS,
-  INDICES,
-} from '@/data/dummy'
+import { fetchStock, fetchTarget, fetchSentiment, fetchNews, fetchIndices, fetchRankingRows } from '@/services/api'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
@@ -23,68 +14,70 @@ interface GeminiContent {
   parts: { text: string }[]
 }
 
-export function buildStockContext(ticker: string): string {
+export async function buildStockContext(ticker: string): Promise<string> {
   const clean = ticker.toUpperCase()
-  const stock = getDummyStock(clean)
-  const target = getDummyTarget(clean)
-  const sentiments = getDummySentiment(clean)
-  const news = getDummyNews(clean)
-  const rankRow = RANKING_ROWS.find(r => r.ticker === clean)
+  try {
+    const [stock, target, sentiments, news] = await Promise.all([
+      fetchStock(clean),
+      fetchTarget(clean),
+      fetchSentiment(clean),
+      fetchNews(clean),
+    ])
 
-  const topNews = news[0] ? `Berita: ${news[0].headline} [${news[0].tone}]` : ''
-  const sent = sentiments.map(s => `${s.label}:${s.verdict}(${s.value})`).join(' ')
-  const rank = rankRow ? `Rank:#${rankRow.rank} Skor:${rankRow.score} ${rankRow.rec} Conf:${rankRow.confPct}%` : ''
+    const topNews = news && news[0] ? `Berita: ${news[0].headline} [${news[0].tone}]` : ''
+    const sent = sentiments ? sentiments.map(s => `${s.label}:${s.verdict}(${s.value})`).join(' ') : ''
 
-  return [
-    `${clean}|${stock.price}|${stock.change}|${stock.dir === 'up' ? '▲' : '▼'}`,
-    stock.ratios.map(r => `${r.label}:${r.value}`).join(' '),
-    `Target:${target.price} Rec:${target.rec} Stop:${target.stats[0]?.value} RR:${target.stats[1]?.value} Conf:${target.stats[2]?.value}`,
-    sent,
-    rank,
-    topNews,
-  ].filter(Boolean).join('\n')
+    return [
+      `${clean}|${stock.price}|${stock.change}|${stock.dir === 'up' ? '▲' : '▼'}`,
+      stock.ratios ? stock.ratios.map(r => `${r.label}:${r.value}`).join(' ') : '',
+      `Target:${target.targetPrice || target.price} Rec:${target.rec} Stop:${target.stopLoss || '—'} Conf:${target.confidence || '—'}`,
+      sent,
+      topNews,
+    ]
+      .filter(Boolean)
+      .join('\n')
+  } catch {
+    return `${clean} | Data sedang disinkronisasikan dari model pasar`
+  }
 }
 
-export function buildGlobalContext(): string {
-  const lines: string[] = [
-    `=== KONDISI PASAR GLOBAL & IHSG ===`,
-    '',
-    `[INDEKS UTAMA]`,
-    ...INDICES.map(idx => `${idx.label}: ${idx.value} (${idx.dir === 'up' ? '▲' : '▼'})`),
-    '',
-    `[TOP RANKING SAHAM (AI Score)]`,
-    ...RANKING_HIGHLIGHTS.map(
-      r => `#${r.rank} ${r.ticker} (${r.name}) — Skor: ${r.score}, Return: ${r.ret} (${r.dir === 'up' ? '▲' : '▼'})`
-    ),
-    '',
-    `[TABEL RANKING LENGKAP]`,
-    ...RANKING_ROWS.map(
-      r =>
-        `#${r.rank} ${r.ticker} | Skor: ${r.score} | Rec: ${r.rec} | Confidence: ${r.conf} ${r.confPct}% | Cap: ${r.cap}`
-    ),
-    '',
-  ]
+export async function buildGlobalContext(): Promise<string> {
+  try {
+    const [indices, rankingRows] = await Promise.all([
+      fetchIndices(),
+      fetchRankingRows(),
+    ])
 
-  return lines.join('\n')
+    const lines: string[] = [
+      `=== KONDISI PASAR GLOBAL & IHSG ===`,
+      '',
+      `[INDEKS UTAMA]`,
+      ...indices.map(idx => `${idx.label}: ${idx.value} (${idx.dir === 'up' ? '▲' : '▼'})`),
+      '',
+      `[TABEL RANKING MODEL AI]`,
+      ...rankingRows.slice(0, 10).map(
+        r => `#${r.rank} ${r.ticker} (${r.company}) | Skor: ${r.score} | Rec: ${r.rec} | Conf: ${r.conf}`
+      ),
+      '',
+    ]
+
+    return lines.join('\n')
+  } catch {
+    return '=== KONDISI PASAR TERKINI ===\nData pasar real-time sedang disinkronisasikan dari server.'
+  }
 }
 
-export function buildMultiStockContext(tickers: string[]): string {
-  return tickers.map(t => buildStockContext(t)).join('\n\n')
-}
+const SYSTEM_PROMPT = `Kamu analis saham IDX profesional berbasis model AI kuantitatif. Jawab HANYA berdasarkan data pasar yang diberikan. Bahasa Indonesia. WAJIB ringkas, padat, dan to the point.
 
-const SYSTEM_PROMPT = `Kamu analis saham IDX. Jawab HANYA dari data yang diberikan. Bahasa Indonesia. WAJIB max 3 baris. Tidak boleh lebih.
-
-FORMAT WAJIB:
-Baris 1: Status + sinyal utama (harga, arah, rekomendasi)
-Baris 2: Alasan kunci (1 teknikal + 1 fundamental)
-Baris 3: Target / risiko / peringatan - akhiri dengan [bukan saran investasi]
-
-Jika tidak ada data: tulis "Data tidak tersedia" - jangan karang angka.`
+FORMAT:
+1. Status & Rekomendasi (Harga, Sinyal, Target)
+2. Alasan Kuantitatif & Berita Utama
+3. Manajemen Risiko & Stop Loss`
 
 async function callGemini(
   contents: GeminiContent[],
   temperature = 0.7,
-  maxTokens = 200,
+  maxTokens = 350,
   retries = 1
 ): Promise<string> {
   const url = `${API_BASE}/api/ai/generate`
@@ -110,97 +103,36 @@ async function callGemini(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ error: res.statusText }))
     const msg = err?.error ?? res.statusText
-    if (res.status === 429) throw new Error('Quota habis. Coba beberapa menit lagi atau upgrade API key di backend.')
+    if (res.status === 429) throw new Error('Batas quota API tercapai. Coba sesaat lagi.')
     throw new Error(`AI Backend error ${res.status}: ${msg}`)
   }
 
   const json = await res.json()
   const text: string = json?.text ?? ''
-  if (!text) throw new Error('AI Backend tidak mengembalikan respons teks.')
+  if (!text) throw new Error('Model AI tidak mengembalikan respons teks.')
   return text
 }
 
 export async function generateSynthesis(ticker: string): Promise<string[]> {
-  const context = buildStockContext(ticker)
+  const context = await buildStockContext(ticker)
+  const prompt = `Konteks Pasar Terkini:\n${context}\n\nBuat ringkasan sintesis kuantitatif 2 paragraf padat tentang prospek saham ${ticker}.`
+  const text = await callGemini([{ role: 'user', parts: [{ text: prompt }] }], 0.6, 300)
+  return text.split('\n\n').filter(p => p.trim() !== '')
+}
 
-  const prompt = `Tulis synthesis ${ticker.toUpperCase()} — MAX 3 BARIS TOTAL, tidak boleh lebih.
-
-DATA:
-${context}
-
-Output: 3 baris saja. Baris 1: sinyal harga & arah. Baris 2: alasan teknikal+fundamental. Baris 3: target+risiko+[bukan saran investasi].`
-
+export async function chatWithRAG(messages: ChatMessage[], activeTicker?: string): Promise<string> {
+  const context = activeTicker ? await buildStockContext(activeTicker) : await buildGlobalContext()
+  
   const contents: GeminiContent[] = [
-    { role: 'user', parts: [{ text: prompt }] },
+    {
+      role: 'user',
+      parts: [{ text: `Konteks Pasar Terkini:\n${context}` }],
+    },
+    ...messages.map(m => ({
+      role: m.role,
+      parts: [{ text: m.text }],
+    })),
   ]
 
-  const raw = await callGemini(contents, 0.6, 300)
-
-  const paragraphs = raw
-    .split(/\n\n+/)
-    .map(p => p.trim())
-    .filter(p => p.length > 20)
-
-  return paragraphs.length > 0 ? paragraphs : [raw.trim()]
-}
-
-export async function chatWithRAG(
-  messages: ChatMessage[],
-  activeTicker?: string
-): Promise<string> {
-  const lastUserMsg = [...messages].reverse().find(m => m.role === 'user')?.text ?? ''
-  const mentionedTickers = detectTickers(lastUserMsg)
-
-  let context = ''
-  const tickersToLoad = new Set<string>()
-
-  if (activeTicker) tickersToLoad.add(activeTicker.toUpperCase())
-  mentionedTickers.forEach(t => tickersToLoad.add(t))
-
-  if (tickersToLoad.size === 0) {
-    context = buildGlobalContext()
-  } else if (tickersToLoad.size === 1) {
-    const ticker = [...tickersToLoad][0]
-    context = buildStockContext(ticker)
-  } else {
-    context = buildGlobalContext() + '\n\n' + buildMultiStockContext([...tickersToLoad])
-  }
-
-  const firstUserIdx = messages.findIndex(m => m.role === 'user')
-  const contentsRaw: ChatMessage[] = messages.map((m, i) => {
-    if (i === firstUserIdx) {
-      return {
-        role: 'user',
-        text: `[DATA PASAR TERSEDIA UNTUK REFERENSI]\n${context}\n\n[PERTANYAAN USER]\n${m.text}`,
-      }
-    }
-    return m
-  })
-
-  const contents: GeminiContent[] = contentsRaw.map(m => ({
-    role: m.role,
-    parts: [{ text: m.text }],
-  }))
-
-  return callGemini(contents, 0.7, 200)
-}
-
-const KNOWN_TICKERS = ['BBCA', 'BBRI', 'TLKM', 'ASII', 'GOTO', 'BMRI', 'UNVR', 'ICBP', 'BUKA', 'LQ45', 'IHSG']
-
-export function detectTickers(text: string): string[] {
-  const upper = text.toUpperCase()
-  const found: string[] = []
-
-  KNOWN_TICKERS.forEach(ticker => {
-    if (upper.includes(ticker)) found.push(ticker)
-  })
-
-  const matches = upper.match(/\b[A-Z]{4}\b/g) ?? []
-  matches.forEach(m => {
-    if (!found.includes(m) && !['YANG', 'ATAU', 'JIKA', 'DARI', 'PADA', 'AKAN', 'BISA', 'SAJA'].includes(m)) {
-      found.push(m)
-    }
-  })
-
-  return [...new Set(found)]
+  return callGemini(contents)
 }

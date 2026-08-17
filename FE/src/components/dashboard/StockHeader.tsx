@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { InfoTip } from '@/components/common/InfoTip'
 import { useStock } from '@/hooks/useStock'
-import { GLOSSARY } from '@/data/dummy'
+import { GLOSSARY } from '@/data/constants'
 import { PlusIcon } from '@/components/common/icons'
 import { useToast } from '@/components/common/Toast'
 import { ShareModal } from '@/components/common/ShareModal'

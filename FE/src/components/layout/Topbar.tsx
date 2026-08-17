@@ -1,8 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { SearchIcon } from '@/components/common/icons'
-import { useIndices } from '@/hooks/useMarkets'
-import { RANKING_ROWS } from '@/data/dummy'
+import { useIndices, useRankingRows } from '@/hooks/useMarkets'
 
 interface Props { 
   onSearch?: (q: string) => void;
@@ -12,6 +11,7 @@ interface Props {
 export function Topbar({ onSearch, onMenuClick }: Props) {
   const navigate = useNavigate()
   const { data: indices = [] } = useIndices()
+  const { data: rankingRows = [] } = useRankingRows()
 
   const [query, setQuery] = useState('')
   const [showDropdown, setShowDropdown] = useState(false)
@@ -26,7 +26,7 @@ export function Topbar({ onSearch, onMenuClick }: Props) {
     setShowDropdown(true)
   }
 
-  const searchResults = query.trim() ? RANKING_ROWS.filter(r => {
+  const searchResults = query.trim() ? rankingRows.filter(r => {
     const cleanQuery = query.replace(/[<>'"&]/g, '').trim().toLowerCase()
     return r.ticker.toLowerCase().includes(cleanQuery) ||
       r.company.toLowerCase().includes(cleanQuery)

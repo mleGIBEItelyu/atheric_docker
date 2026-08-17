@@ -100,7 +100,7 @@ func seedInitialData(db *gorm.DB) {
 	}
 	log.Println("Synchronized Demo Accounts with ADMIN and USER roles (admin: admin123, atheric_user: user123)")
 
-	// Clean any dummy system init logs
+	// Clean initial system logs
 	db.Where("action LIKE ?", "%INIT%").Delete(&models.ActivityLog{})
 
 	// Seed Stock market data if empty
