@@ -414,7 +414,7 @@ func GetEvaluations(c *fiber.Ctx) error {
 		if summary, err := services.GlobalGenesisManager.GetSummary(); err == nil && summary != nil {
 			genesisEval := models.Evaluation{
 				ID:                 999,
-				ModelName:          fmt.Sprintf("%s (Transformer Sequence Ensemble)", summary.ModelName),
+				ModelName:          "Generative Financial AI (Transformer Sequence Ensemble)",
 				AccuracyPercentage: summary.BacktestHitRate,
 				MapeScore:          4.2,
 				Pros:               fmt.Sprintf("Sharpe Ratio %.3f (+%.1f%% Total Return, CAGR %.1f%%); Model C Cross-Sectional Attention pada %d baris OOS", summary.SharpeRatio, summary.TotalReturnNetPct, summary.CAGRNetPct, summary.OOSRowsScored),
@@ -422,10 +422,10 @@ func GetEvaluations(c *fiber.Ctx) error {
 				Notes:              fmt.Sprintf("Release Production: %s (%s) dengan %d seeds ensemble dan kalibrasi %s.", summary.Version, summary.Family, summary.Seeds, summary.SignalMode),
 			}
 
-			// Prepend Genesis model as top/primary evaluation item
+			// Prepend model as top/primary evaluation item
 			combined := []models.Evaluation{genesisEval}
 			for _, e := range evals {
-				if !strings.Contains(e.ModelName, "Genesis") {
+				if !strings.Contains(e.ModelName, "Generative") && !strings.Contains(e.ModelName, "Genesis") {
 					combined = append(combined, e)
 				}
 			}

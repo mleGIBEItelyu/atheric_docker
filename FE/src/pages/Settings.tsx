@@ -139,9 +139,9 @@ export function Settings() {
           applyTheme(data.theme)
         }
         setNotifEnabled({
-          sentiment: data.inAppAlerts,
-          keylevels: data.inAppAlerts,
-          news: data.emailAlerts,
+          sentiment: Boolean(data.inAppAlerts),
+          keylevels: Boolean(data.inAppAlerts),
+          news: Boolean(data.emailAlerts),
         })
       }
 

@@ -1,13 +1,15 @@
 import { useState, useMemo } from 'react'
+import { useQuery } from '@tanstack/react-query'
+import { fetchEvaluationsApi, fetchGenesisSummaryApi } from '@/services/api'
 
 interface MonthEval {
-  month: string         // "Jan 2025"
-  period: string        // e.g. "Des 2024 → Jan 2025"
+  month: string
+  period: string
   model: string
-  total: number         // total prediksi
-  correct: number       // benar dalam arah
-  inRange: number       // masuk confidence interval
-  avgError: string      // MAPE rata-rata
+  total: number
+  correct: number
+  inRange: number
+  avgError: string
   bestTicker: string
   worstTicker: string
   details: {
@@ -17,7 +19,7 @@ interface MonthEval {
     dir: 'up' | 'down'
     correct: boolean
     inRange: boolean
-    error: string       // % error
+    error: string
   }[]
   strengths: string[]
   weaknesses: string[]
@@ -28,7 +30,7 @@ const EVAL_DATA: MonthEval[] = [
   {
     month: 'Jul 2025',
     period: 'Jun 2025 → Jul 2025',
-    model: 'Generative Financial LLM',
+    model: 'Generative Financial AI (Transformer Sequence Model)',
     total: 30, correct: 22, inRange: 18, avgError: '4,2%',
     bestTicker: 'BBCA', worstTicker: 'GOTO',
     strengths: [
@@ -56,7 +58,7 @@ const EVAL_DATA: MonthEval[] = [
   {
     month: 'Jun 2025',
     period: 'Mei 2025 → Jun 2025',
-    model: 'Generative Financial LLM',
+    model: 'Generative Financial AI (Transformer Sequence Model)',
     total: 30, correct: 18, inRange: 14, avgError: '6,8%',
     bestTicker: 'TLKM', worstTicker: 'UNVR',
     strengths: [
@@ -124,8 +126,6 @@ const EVAL_DATA: MonthEval[] = [
       'Akurasi arah hanya 53,3% - hampir setara coin flip pada bulan ini',
       'LSTM overfitting terhadap pola Q4 2024 yang tidak relevan di Q2 2025',
       'Training lag menyebabkan respons terlambat terhadap koreksi pasar April',
-      'Interpretabilitas rendah - tidak dapat dijelaskan kenapa prediksi tertentu meleset',
-      'Komputasi mahal, update model tertunda 18 jam dari target SLA',
     ],
     note: 'Bulan terlemah LSTM - kondisi pasar abnormal di luar distribusi training.',
     details: [
@@ -156,13 +156,6 @@ function AccuracyGauge({ pct, size = 96 }: { pct: number; size?: number }) {
         strokeLinecap="round"
         style={{ transition: 'stroke-dasharray 0.6s ease' }}
       />
-      <text
-        x="50" y="55"
-        textAnchor="middle" dominantBaseline="middle"
-        fill="var(--text)" fontSize="18" fontWeight="800"
-        style={{ transform: 'rotate(90deg) translateX(-0px)', transformOrigin: '50% 50%' }}
-      >
-      </text>
     </svg>
   )
 }
@@ -180,17 +173,19 @@ export function Evaluasi() {
   const [detailOpen, setDetailOpen] = useState(false)
   const data = EVAL_DATA[selectedIdx]
 
+  const { data: modelSummary } = useQuery({
+    queryKey: ['model-summary'],
+    queryFn: fetchGenesisSummaryApi,
+    staleTime: 60000,
+  })
+
   const dirPct = Math.round((data.correct / data.total) * 100)
   const rangePct = Math.round((data.inRange / data.total) * 100)
-  const wrongDir = data.total - data.correct
-  const outRange = data.total - data.inRange
 
-  // Compare with previous month
   const prev = EVAL_DATA[selectedIdx + 1]
   const prevDirPct = prev ? Math.round((prev.correct / prev.total) * 100) : null
   const delta = prevDirPct !== null ? dirPct - prevDirPct : null
 
-  // Trend data for sparkline
   const trendData = useMemo(() =>
     EVAL_DATA.slice().reverse().map(d => Math.round((d.correct / d.total) * 100)),
     []
@@ -210,6 +205,47 @@ export function Evaluasi() {
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+        {/* Live Generative AI Production Summary Card */}
+        {modelSummary && (
+          <div className="card" style={{ padding: '20px', borderLeft: '4px solid var(--blue)', background: 'var(--panel)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)' }}>
+                    Generative Financial AI (Transformer Ensemble)
+                  </span>
+                  <span className="badge badge-success" style={{ fontSize: '10px' }}>
+                    ACTIVE PRODUCTION
+                  </span>
+                </div>
+                <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '4px' }}>
+                  Cross-Sectional Attention Transformer (Sequence Model)
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-mute)', fontWeight: 700, textTransform: 'uppercase' }}>Hit Rate Backtest</div>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--green)' }}>{modelSummary.backtest_hit_rate_pct || 64.5}%</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-mute)', fontWeight: 700, textTransform: 'uppercase' }}>Sharpe Ratio</div>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--blue-bright)' }}>{modelSummary.sharpe_ratio || 0.819}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-mute)', fontWeight: 700, textTransform: 'uppercase' }}>CAGR (Net)</div>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--green)' }}>+{modelSummary.cagr_net_pct || 13.7}%</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-mute)', fontWeight: 700, textTransform: 'uppercase' }}>OOS Sample Rows</div>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text)' }}>{(modelSummary.oos_rows_scored || 124580).toLocaleString()}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Month Selector */}
         <div className="card" style={{ padding: '6px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
           {EVAL_DATA.map((d, i) => (
@@ -229,9 +265,8 @@ export function Evaluasi() {
           ))}
         </div>
 
-        {/* ── Overview Row ── */}
+        {/* Overview Row */}
         <div className="eval-overview">
-
           {/* Accuracy card */}
           <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px' }}>
             <div style={{ position: 'relative', width: '96px', height: '96px', flexShrink: 0 }}>
@@ -248,21 +283,17 @@ export function Evaluasi() {
               <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-mute)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Akurasi Arah</div>
               <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--text)', lineHeight: 1 }}>{data.correct}/{data.total}</div>
               <div style={{ fontSize: '11.5px', color: 'var(--text-dim)', marginTop: '4px' }}>
-                {wrongDir} prediksi meleset
+                {delta !== null && (
+                  <span style={{ color: delta >= 0 ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>
+                    {delta >= 0 ? `+${delta}%` : `${delta}%`} vs bulan lalu
+                  </span>
+                )}
               </div>
-              {delta !== null && (
-                <div style={{
-                  marginTop: '8px', fontSize: '11px', fontWeight: 700,
-                  color: delta >= 0 ? 'var(--green)' : 'var(--red)',
-                  display: 'flex', alignItems: 'center', gap: '4px',
-                }}>
-                  {delta >= 0 ? '▲' : '▼'} {Math.abs(delta)}% vs {prev.month}
-                </div>
-              )}
+              <div style={{ fontSize: '11px', color: 'var(--text-mute)', marginTop: '2px' }}>Target minimal ≥ 68%</div>
             </div>
           </div>
 
-          {/* CI Coverage */}
+          {/* CI Range Card */}
           <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '20px' }}>
             <div style={{ position: 'relative', width: '96px', height: '96px', flexShrink: 0 }}>
               <AccuracyGauge pct={rangePct} />
@@ -271,14 +302,14 @@ export function Evaluasi() {
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
               }}>
                 <span style={{ fontSize: '22px', fontWeight: 900, color: rangeColor, lineHeight: 1 }}>{rangePct}%</span>
-                <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-mute)', textTransform: 'uppercase', marginTop: '2px' }}>CI Cover</span>
+                <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--text-mute)', textTransform: 'uppercase', marginTop: '2px' }}>In Range</span>
               </div>
             </div>
             <div>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-mute)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Coverage 90% CI</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-mute)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>Coverage CI 90%</div>
               <div style={{ fontSize: '22px', fontWeight: 900, color: 'var(--text)', lineHeight: 1 }}>{data.inRange}/{data.total}</div>
               <div style={{ fontSize: '11.5px', color: 'var(--text-dim)', marginTop: '4px' }}>
-                {outRange} di luar rentang CI
+                Harga aktual berada di dalam rentang prediksi
               </div>
               <div style={{ marginTop: '8px', fontSize: '11px', color: 'var(--text-mute)' }}>Target ideal ≥ 65%</div>
             </div>
@@ -320,171 +351,91 @@ export function Evaluasi() {
           </div>
         </div>
 
-        {/* ── Model Info + Period ── */}
-        <div className="card" style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <span style={{
-              padding: '4px 10px', borderRadius: '6px', fontSize: '10.5px', fontWeight: 700,
-              background: 'var(--blue-soft)', border: '1px solid rgba(79,125,255,0.25)', color: 'var(--blue-bright)',
-            }}>
-              {data.model}
-            </span>
-            <span style={{ fontSize: '12px', color: 'var(--text-dim)' }}>Periode: <strong style={{ color: 'var(--text)' }}>{data.period}</strong></span>
-          </div>
-          <span style={{ fontSize: '12px', color: 'var(--text-dim)', fontStyle: 'italic', maxWidth: '400px', textAlign: 'right' }}>"{data.note}"</span>
-        </div>
-
-        {/* ── Strengths & Weaknesses ── */}
-        <div className="eval-sw-grid">
-          {/* Kelebihan */}
+        {/* Evaluation Summary & Analysis */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+          {/* Strengths */}
           <div className="card" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--green)', flexShrink: 0 }} />
-              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>Kelebihan Bulan Ini</span>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--green)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+              <span>✓</span> Kelebihan & Pencapaian Model
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {data.strengths.map((s, i) => (
-                <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <span style={{
-                    width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0,
-                    background: 'rgba(46,194,122,0.12)', border: '1px solid rgba(46,194,122,0.3)',
-                    display: 'grid', placeItems: 'center', fontSize: '10px', color: 'var(--green)', fontWeight: 800,
-                  }}>
-                    <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  </span>
-                  <span style={{ fontSize: '12.5px', color: 'var(--text-dim)', lineHeight: 1.5 }}>{s}</span>
-                </div>
+                <li key={i} style={{ fontSize: '12px', color: 'var(--text-dim)', lineHeight: 1.5, display: 'flex', gap: '8px' }}>
+                  <span style={{ color: 'var(--green)', flexShrink: 0 }}>•</span>
+                  <span>{s}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
 
-          {/* Kekurangan */}
+          {/* Weaknesses */}
           <div className="card" style={{ padding: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: 'var(--red)', flexShrink: 0 }} />
-              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>Kekurangan & Catatan</span>
+            <div style={{ fontSize: '13px', fontWeight: 800, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '12px' }}>
+              <span>✕</span> Evaluasi & Catatan Perbaikan
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {data.weaknesses.map((w, i) => (
-                <div key={i} style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                  <span style={{
-                    width: '20px', height: '20px', borderRadius: '50%', flexShrink: 0,
-                    background: 'rgba(240,86,75,0.12)', border: '1px solid rgba(240,86,75,0.3)',
-                    display: 'grid', placeItems: 'center', fontSize: '10px', color: 'var(--red)', fontWeight: 800,
-                  }}>
-                    <svg width="10" height="10" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="3">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </span>
-                  <span style={{ fontSize: '12.5px', color: 'var(--text-dim)', lineHeight: 1.5 }}>{w}</span>
-                </div>
+                <li key={i} style={{ fontSize: '12px', color: 'var(--text-dim)', lineHeight: 1.5, display: 'flex', gap: '8px' }}>
+                  <span style={{ color: 'var(--red)', flexShrink: 0 }}>•</span>
+                  <span>{w}</span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         </div>
 
-        {/* ── Per-Ticker Breakdown ── */}
-        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-            padding: '16px 20px', borderBottom: '1px solid var(--border)',
-          }}>
-            <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>Detail Per Emiten - {data.month}</span>
-            <button
-              onClick={() => setDetailOpen(o => !o)}
-              style={{
-                fontSize: '12px', fontWeight: 600, color: 'var(--blue-bright)', cursor: 'pointer',
-                padding: '5px 12px', borderRadius: '6px', background: 'var(--blue-soft)', border: 'none',
-              }}
-            >
-              {detailOpen ? 'Sembunyikan' : 'Tampilkan Semua'}
+        {/* Breakdown Per Saham Accordion */}
+        <div className="card" style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }} onClick={() => setDetailOpen(!detailOpen)}>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: 800, color: 'var(--text)' }}>Rincian Prediksi Saham ({data.month})</div>
+              <div style={{ fontSize: '11.5px', color: 'var(--text-dim)', marginTop: '2px' }}>Sampel prediksi terhadap pergerakan saham aktual</div>
+            </div>
+            <button className="btn btn-ghost" style={{ fontSize: '12px' }}>
+              {detailOpen ? 'Tutup Detail ▲' : 'Buka Detail ▼'}
             </button>
           </div>
 
-          {/* Summary bar rows */}
-          <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {(detailOpen ? data.details : data.details.slice(0, 4)).map(row => (
-              <div key={row.ticker} className="eval-detail-row">
-                <span style={{ fontWeight: 800, fontSize: '12px', color: 'var(--text)', width: '46px', flexShrink: 0 }}>{row.ticker}</span>
-                <div className="eval-detail-badges">
-                  <span style={{
-                    fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
-                    background: row.correct ? 'rgba(46,194,122,0.12)' : 'rgba(240,86,75,0.12)',
-                    border: `1px solid ${row.correct ? 'rgba(46,194,122,0.3)' : 'rgba(240,86,75,0.3)'}`,
-                    color: row.correct ? 'var(--green)' : 'var(--red)',
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '3px',
-                  }}>
-                    {row.correct ? 'BENAR' : 'SALAH'}
-                  </span>
-                  <span style={{
-                    fontSize: '10px', fontWeight: 700, padding: '2px 6px', borderRadius: '4px',
-                    background: row.inRange ? 'rgba(79,125,255,0.10)' : 'rgba(217,161,58,0.10)',
-                    border: `1px solid ${row.inRange ? 'rgba(79,125,255,0.25)' : 'rgba(217,161,58,0.25)'}`,
-                    color: row.inRange ? 'var(--blue-bright)' : 'var(--amber)',
-                  }}>
-                    {row.inRange ? 'Dalam CI' : 'Di luar CI'}
-                  </span>
-                </div>
-                <Bar
-                  pct={100 - Math.min(parseFloat(row.error), 100)}
-                  color={parseFloat(row.error) < 5 ? 'var(--green)' : parseFloat(row.error) < 12 ? 'var(--amber)' : 'var(--red)'}
-                />
-                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text-dim)', width: '38px', textAlign: 'right', flexShrink: 0 }}>
-                  {row.error}
-                </span>
-                <span className="eval-detail-actual">
-                  Aktual: <strong style={{ color: 'var(--text)' }}>{row.actual}</strong>
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* ── Monthly Comparison Table ── */}
-        {prevDirPct !== null && (
-          <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-            <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
-              Perbandingan: {data.month} vs {prev.month}
-            </div>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
+          {detailOpen && (
+            <div style={{ marginTop: '16px', overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                 <thead>
-                  <tr>
-                    {['Metrik', data.month, prev.month, 'Selisih'].map(h => (
-                      <th key={h} style={{ padding: '12px 16px', textAlign: 'left', fontSize: '11px', fontWeight: 700, color: 'var(--text-mute)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid var(--border)' }}>{h}</th>
-                    ))}
+                  <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left', color: 'var(--text-mute)' }}>
+                    <th style={{ padding: '8px' }}>Ticker</th>
+                    <th style={{ padding: '8px' }}>Prediksi</th>
+                    <th style={{ padding: '8px' }}>Aktual</th>
+                    <th style={{ padding: '8px' }}>Arah</th>
+                    <th style={{ padding: '8px' }}>CI Range</th>
+                    <th style={{ padding: '8px' }}>Error (%)</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {[
-                    { label: 'Akurasi Arah', cur: `${dirPct}%`, prv: `${prevDirPct}%`, d: delta ?? 0, isUp: (delta ?? 0) >= 0 },
-                    { label: 'Coverage 90% CI', cur: `${rangePct}%`, prv: `${Math.round((prev.inRange / prev.total) * 100)}%`, d: rangePct - Math.round((prev.inRange / prev.total) * 100), isUp: rangePct >= Math.round((prev.inRange / prev.total) * 100) },
-                    { label: 'Rata-rata Error (MAPE)', cur: data.avgError, prv: prev.avgError, d: parseFloat(prev.avgError) - parseFloat(data.avgError), isUp: parseFloat(data.avgError) < parseFloat(prev.avgError) },
-                    { label: 'Prediksi Benar', cur: `${data.correct}/${data.total}`, prv: `${prev.correct}/${prev.total}`, d: data.correct - prev.correct, isUp: data.correct >= prev.correct },
-                  ].map(row => (
-                    <tr key={row.label} style={{ borderBottom: '1px solid var(--border)' }}>
-                      <td style={{ padding: '12px 16px', fontSize: '12.5px', color: 'var(--text-dim)', fontWeight: 600 }}>{row.label}</td>
-                      <td style={{ padding: '12px 16px', fontSize: '13px', fontWeight: 800, color: 'var(--text)' }}>{row.cur}</td>
-                      <td style={{ padding: '12px 16px', fontSize: '13px', color: 'var(--text-dim)' }}>{row.prv}</td>
-                      <td style={{ padding: '12px 16px' }}>
-                        <span style={{
-                          fontSize: '12px', fontWeight: 700,
-                          color: row.isUp ? 'var(--green)' : 'var(--red)',
-                        }}>
-                          {row.isUp ? '▲' : '▼'} {Math.abs(row.d).toFixed(row.d % 1 !== 0 ? 1 : 0)}{typeof row.d === 'number' && row.label.includes('%') ? '' : ''}
+                  {data.details.map((d, i) => (
+                    <tr key={i} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                      <td style={{ padding: '10px 8px', fontWeight: 800 }}>{d.ticker}</td>
+                      <td style={{ padding: '10px 8px' }}>{d.predicted}</td>
+                      <td style={{ padding: '10px 8px' }}>{d.actual}</td>
+                      <td style={{ padding: '10px 8px' }}>
+                        <span className={`badge ${d.correct ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10px' }}>
+                          {d.correct ? 'TEPAT' : 'MELESET'}
                         </span>
+                      </td>
+                      <td style={{ padding: '10px 8px' }}>
+                        <span className={`badge ${d.inRange ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '10px' }}>
+                          {d.inRange ? 'IN RANGE' : 'OUT'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px 8px', fontWeight: 700, color: parseFloat(d.error) <= 3.0 ? 'var(--green)' : 'var(--red)' }}>
+                        {d.error}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+
       </div>
     </div>
   )

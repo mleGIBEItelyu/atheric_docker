@@ -1,7 +1,33 @@
-import { getDummyStock, getDummyForecast, getDummyTarget, getDummyKeyLevels, getDummySentiment, getDummySynthesis, getDummyNews, RANKING_HIGHLIGHTS, RANKING_ROWS, INDICES } from '@/data/dummy'
-import type { Stock, ForecastData, TargetData, SentimentItem, SynthesisData, NewsItem, KeyLevel, RankingHighlight, RankingRow, IndexData } from '@/types'
+import {
+  getDummyStock,
+  getDummyForecast,
+  getDummyTarget,
+  getDummyKeyLevels,
+  getDummySentiment,
+  getDummySynthesis,
+  getDummyNews,
+  RANKING_HIGHLIGHTS,
+  RANKING_ROWS,
+  INDICES,
+} from '@/data/dummy'
+import type {
+  Stock,
+  ForecastData,
+  TargetData,
+  SentimentItem,
+  SynthesisData,
+  NewsItem,
+  KeyLevel,
+  RankingHighlight,
+  RankingRow,
+  IndexData,
+} from '@/types'
 
-const BASE_URL = import.meta.env.VITE_API_URL ?? (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5000` : 'http://localhost:5000')
+const BASE_URL =
+  import.meta.env.VITE_API_URL ??
+  (typeof window !== 'undefined'
+    ? `${window.location.protocol}//${window.location.hostname}:5000`
+    : 'http://localhost:5000')
 
 function getAuthHeaders(token?: string | null): Record<string, string> {
   const headers: Record<string, string> = {
@@ -72,7 +98,7 @@ export async function resendCodeApi(email: string) {
   return data
 }
 
-// --- Admin API ---
+// --- Admin Endpoints ---
 
 export async function adminGetUsersApi() {
   const res = await fetch(`${BASE_URL}/api/admin/users`, { headers: getAuthHeaders() })
@@ -82,14 +108,19 @@ export async function adminGetUsersApi() {
 
 export async function adminCreateUserApi(data: { username: string; email: string; password: string; role: string }) {
   const res = await fetch(`${BASE_URL}/api/admin/users`, {
-    method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data),
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify(data),
   })
   const json = await res.json()
   if (!res.ok) throw new Error(json.error || 'Gagal membuat user')
   return json
 }
 
-export async function adminUpdateUserApi(id: number, data: { username?: string; email?: string; role?: string; isActive?: boolean; password?: string }) {
+export async function adminUpdateUserApi(
+  id: number,
+  data: { username?: string; email?: string; role?: string; isActive?: boolean; password?: string }
+) {
   const res = await fetch(`${BASE_URL}/api/admin/users/${id}`, {
     method: 'PUT',
     headers: getAuthHeaders(),
@@ -102,7 +133,9 @@ export async function adminUpdateUserApi(id: number, data: { username?: string; 
 
 export async function adminUpdateRoleApi(id: number, role: string) {
   const res = await fetch(`${BASE_URL}/api/admin/users/${id}/role`, {
-    method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify({ role }),
+    method: 'PUT',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ role }),
   })
   const json = await res.json()
   if (!res.ok) throw new Error(json.error || 'Gagal update role')
@@ -111,7 +144,8 @@ export async function adminUpdateRoleApi(id: number, role: string) {
 
 export async function adminToggleStatusApi(id: number) {
   const res = await fetch(`${BASE_URL}/api/admin/users/${id}/status`, {
-    method: 'PUT', headers: getAuthHeaders(),
+    method: 'PUT',
+    headers: getAuthHeaders(),
   })
   const json = await res.json()
   if (!res.ok) throw new Error(json.error || 'Gagal update status')
@@ -120,7 +154,8 @@ export async function adminToggleStatusApi(id: number) {
 
 export async function adminDeleteUserApi(id: number) {
   const res = await fetch(`${BASE_URL}/api/admin/users/${id}`, {
-    method: 'DELETE', headers: getAuthHeaders(),
+    method: 'DELETE',
+    headers: getAuthHeaders(),
   })
   const json = await res.json()
   if (!res.ok) throw new Error(json.error || 'Gagal hapus user')
@@ -183,7 +218,13 @@ export async function toggleWatchlistApi(ticker: string) {
 
 // --- Support Ticket Endpoint ---
 
-export async function submitSupportTicketApi(ticket: { name: string; email: string; subject: string; category: string; message: string }) {
+export async function submitSupportTicketApi(ticket: {
+  name: string
+  email: string
+  subject: string
+  category: string
+  message: string
+}) {
   try {
     const res = await fetch(`${BASE_URL}/api/tickets`, {
       method: 'POST',
@@ -201,250 +242,163 @@ export async function submitSupportTicketApi(ticket: { name: string; email: stri
   }
 }
 
-// --- Evaluation Models Endpoint ---
+// --- Stock Data & AI Forecasting Endpoints ---
 
-export async function fetchEvaluationsApi() {
+export async function fetchStock(ticker = 'BBCA'): Promise<Stock> {
   try {
-    const res = await fetch(`${BASE_URL}/api/evaluations`)
-    if (!res.ok) return null
-    return await res.json()
-  } catch {
-    return null
+    const res = await fetch(`${BASE_URL}/api/stock/${ticker}`, {
+      headers: getAuthHeaders(),
+    })
+    if (res.ok) {
+      return await res.json()
+    }
+  } catch (err) {
+    console.warn(`Failed to fetch stock ${ticker} from backend, using fallback:`, err)
   }
+  return getDummyStock(ticker)
 }
 
-// --- Market Data Endpoints ---
-
-export async function fetchStock(ticker: string): Promise<Stock> {
-  const dummy = getDummyStock(ticker)
+export async function fetchForecast(ticker = 'BBCA', range = '3M'): Promise<ForecastData> {
   try {
-    const res = await fetch(`${BASE_URL}/api/stock/${ticker}`)
+    const res = await fetch(`${BASE_URL}/api/forecast/${ticker}?range=${range}`, {
+      headers: getAuthHeaders(),
+    })
     if (res.ok) {
-      const data = await res.json()
-      if (data && data.ticker) {
-        return {
-          ...dummy,
-          ticker: data.ticker,
-          name: data.name || dummy.name,
-          price: data.price ? `Rp ${Number(data.price).toLocaleString('id-ID')}` : dummy.price,
-          change: data.changePercent ? `${data.changePercent >= 0 ? '+' : ''}${data.changePercent}%` : dummy.change,
-          dir: (data.changePercent ?? 0) >= 0 ? 'up' : 'down',
-          ohlc: dummy.ohlc || [
-            { label: 'Prev', value: '9.325' },
-            { label: 'Vol', value: '12,4M' },
-          ],
-          ratios: dummy.ratios || [
-            { label: 'Mkt Cap', value: '1.170 T' },
-            { label: 'P/E', value: '24,5' },
-            { label: 'EPS', value: '388' },
-            { label: 'Div Yield', value: '1,2%' },
-          ],
-        }
-      }
+      return await res.json()
     }
-  } catch {
-    // Fallback to dummy
+  } catch (err) {
+    console.warn(`Failed to fetch forecast for ${ticker} from backend, using fallback:`, err)
   }
-  return dummy
+  return getDummyForecast(ticker, range)
 }
 
-export async function fetchForecast(ticker: string, range: string): Promise<ForecastData> {
-  const dummy = getDummyForecast(ticker, range)
+export async function fetchTarget(ticker = 'BBCA'): Promise<TargetData> {
   try {
-    const res = await fetch(`${BASE_URL}/api/forecast/${ticker}?range=${range}`)
+    const res = await fetch(`${BASE_URL}/api/target/${ticker}`, {
+      headers: getAuthHeaders(),
+    })
     if (res.ok) {
-      const data = await res.json()
-      if (data && data.forecast) {
-        return {
-          ...dummy,
-          actual: data.actual || dummy.actual,
-          forecast: data.forecast || dummy.forecast,
-          ciUpper: data.ciUpper || dummy.ciUpper,
-          ciLower: data.ciLower || dummy.ciLower,
-        }
-      }
+      return await res.json()
     }
-  } catch {
-    // Fallback to dummy
+  } catch (err) {
+    console.warn(`Failed to fetch target for ${ticker} from backend, using fallback:`, err)
   }
-  return dummy
+  return getDummyTarget(ticker)
 }
 
-export async function fetchTarget(ticker: string): Promise<TargetData> {
-  const dummy = getDummyTarget(ticker)
+export async function fetchKeyLevels(ticker = 'BBCA'): Promise<KeyLevel[]> {
   try {
-    const res = await fetch(`${BASE_URL}/api/target/${ticker}`)
+    const res = await fetch(`${BASE_URL}/api/keylevels/${ticker}`, {
+      headers: getAuthHeaders(),
+    })
     if (res.ok) {
-      const data = await res.json()
-      if (data && data.targetPrice) {
-        return {
-          ...dummy,
-          targetPrice: data.targetPrice || dummy.targetPrice,
-          rec: data.rec || dummy.rec,
-          upside: data.upside || dummy.upside,
-          sliderPct: data.sliderPct ?? dummy.sliderPct,
-          stopLoss: data.stopLoss || dummy.stopLoss,
-          riskReward: data.riskReward || dummy.riskReward,
-          confidence: data.confidence || dummy.confidence,
-        }
-      }
+      return await res.json()
     }
-  } catch {
-    // Fallback
-  }
-  return dummy
-}
-
-export async function fetchKeyLevels(ticker: string): Promise<KeyLevel[]> {
-  try {
-    const res = await fetch(`${BASE_URL}/api/keylevels/${ticker}`)
-    if (res.ok) {
-      const data = await res.json()
-      if (Array.isArray(data) && data.length > 0) {
-        return data.map((item: any) => ({
-          label: item.label || item.type || 'Pivot',
-          value: item.value || item.level || '9.450',
-          tone: item.tone || (item.type?.startsWith('R') ? 'up' : item.type?.startsWith('S') ? 'down' : 'flat'),
-        }))
-      }
-    }
-  } catch {
-    // Fallback
+  } catch (err) {
+    console.warn(`Failed to fetch key levels for ${ticker} from backend, using fallback:`, err)
   }
   return getDummyKeyLevels(ticker)
 }
 
-export async function fetchSentiment(ticker: string): Promise<SentimentItem[]> {
+export async function fetchSentiment(ticker = 'BBCA'): Promise<SentimentItem[]> {
   try {
-    const res = await fetch(`${BASE_URL}/api/sentiment/${ticker}`)
+    const res = await fetch(`${BASE_URL}/api/sentiment/${ticker}`, {
+      headers: getAuthHeaders(),
+    })
     if (res.ok) {
-      const data = await res.json()
-      if (Array.isArray(data) && data.length > 0) return data
+      return await res.json()
     }
-  } catch {
-    // Fallback
+  } catch (err) {
+    console.warn(`Failed to fetch sentiment for ${ticker} from backend, using fallback:`, err)
   }
   return getDummySentiment(ticker)
 }
 
-export async function fetchSynthesis(ticker: string): Promise<SynthesisData> {
-  const dummy = getDummySynthesis(ticker)
+export async function fetchSynthesis(ticker = 'BBCA'): Promise<SynthesisData> {
   try {
-    const res = await fetch(`${BASE_URL}/api/synthesis/${ticker}`)
+    const res = await fetch(`${BASE_URL}/api/synthesis/${ticker}`, {
+      headers: getAuthHeaders(),
+    })
     if (res.ok) {
-      const data = await res.json()
-      if (Array.isArray(data) && data.length > 0) {
-        return { ...dummy, bullets: data }
-      }
+      return await res.json()
     }
-  } catch {
-    // Fallback
+  } catch (err) {
+    console.warn(`Failed to fetch synthesis for ${ticker} from backend, using fallback:`, err)
   }
-  return dummy
+  return getDummySynthesis(ticker)
 }
 
-export async function fetchNews(ticker: string): Promise<NewsItem[]> {
+export async function fetchNews(ticker = 'BBCA'): Promise<NewsItem[]> {
   try {
-    const res = await fetch(`${BASE_URL}/api/stocks/${ticker}/news`)
+    const res = await fetch(`${BASE_URL}/api/news?ticker=${ticker}`, {
+      headers: getAuthHeaders(),
+    })
     if (res.ok) {
       const data = await res.json()
-      const list = Array.isArray(data) ? data : (data && Array.isArray(data.news)) ? data.news : []
-      if (list.length > 0) {
-        return list.map((item: any) => ({
-          headline: item.title || item.headline || '',
-          source: item.source || 'Market News',
-          time: item.time || '10:00',
-          tag: item.impact || 'Medium',
-          tone: (item.impact && item.impact.includes('+')) ? ('green' as const) : (item.impact && item.impact.includes('-')) ? ('red' as const) : ('amber' as const),
-          url: item.url || '#',
-        }))
-      }
+      return data.news || data
     }
-  } catch {
-    // Fallback
+  } catch (err) {
+    console.warn(`Failed to fetch news for ${ticker} from backend, using fallback:`, err)
   }
   return getDummyNews(ticker)
 }
 
-export async function fetchIndices(): Promise<IndexData[]> {
-  try {
-    const res = await fetch(`${BASE_URL}/api/indices`)
-    if (res.ok) return await res.json()
-  } catch {
-    // Fallback
-  }
-  return INDICES
-}
-
 export async function fetchRankingHighlights(): Promise<RankingHighlight[]> {
   try {
-    const res = await fetch(`${BASE_URL}/api/ranking/highlights`)
-    if (res.ok) return await res.json()
-  } catch {
-    // Fallback
+    const res = await fetch(`${BASE_URL}/api/ranking/highlights`, {
+      headers: getAuthHeaders(),
+    })
+    if (res.ok) {
+      return await res.json()
+    }
+  } catch (err) {
+    console.warn('Failed to fetch ranking highlights from backend, using fallback:', err)
   }
   return RANKING_HIGHLIGHTS
 }
 
 export async function fetchRankingRows(): Promise<RankingRow[]> {
   try {
-    const res = await fetch(`${BASE_URL}/api/stocks`)
+    const res = await fetch(`${BASE_URL}/api/stocks`, {
+      headers: getAuthHeaders(),
+    })
     if (res.ok) {
-      const stocks = await res.json()
-      if (Array.isArray(stocks) && stocks.length > 0) {
-        return stocks.map((s: any, idx: number) => ({
-          rank: idx + 1,
-          ticker: s.ticker,
-          company: s.name,
-          score: `${Math.round(s.confidenceLevel || 85)}%`,
-          ret: `${s.changePercent >= 0 ? '+' : ''}${s.changePercent}%`,
-          dir: s.changePercent >= 0 ? ('up' as const) : ('down' as const),
-          conf: s.signal === 'BUY' ? 'Tinggi' : 'Sedang',
-          confPct: Math.round(s.confidenceLevel || 85),
-          rec: s.signal || 'HOLD',
-          cap: 'Large Cap',
-        }))
-      }
+      return await res.json()
     }
-  } catch {
-    // Fallback
+  } catch (err) {
+    console.warn('Failed to fetch stocks from backend, using fallback:', err)
   }
   return RANKING_ROWS
 }
 
-export async function fetchNewsApi(ticker?: string): Promise<NewsItem[]> {
+export async function fetchIndices(): Promise<IndexData[]> {
   try {
-    const url = ticker ? `${BASE_URL}/api/stocks/${ticker}/news` : `${BASE_URL}/api/news`
-    const res = await fetch(url)
+    const res = await fetch(`${BASE_URL}/api/indices`, {
+      headers: getAuthHeaders(),
+    })
     if (res.ok) {
-      const data = await res.json()
-      const list = Array.isArray(data) ? data : (data && Array.isArray(data.news)) ? data.news : []
-      if (list.length > 0) {
-        return list.map((item: any) => ({
-          title: item.title || item.headline || '',
-          source: item.source || 'Market News',
-          time: item.time || '10:00',
-          impact: item.impact || 'Medium',
-          url: item.url || '#',
-        }))
-      }
+      return await res.json()
     }
   } catch (err) {
-    console.warn('Backend news fetch failed:', err)
+    console.warn('Failed to fetch indices from backend, using fallback:', err)
   }
-  return getDummyNews(ticker || 'BBCA')
+  return INDICES
 }
+
+// --- User Settings Endpoints ---
 
 export interface UserSettingsPayload {
-  aiModel: string
-  confidenceInterval: string
-  topbarIndex: string
-  theme: string
-  emailAlerts: boolean
-  inAppAlerts: boolean
+  aiModel?: string
+  confidenceInterval?: string
+  horizonTradingDays?: string | number
+  theme?: string
+  topbarIndex?: string
+  autoRefreshInterval?: number
+  emailAlerts?: boolean
+  inAppAlerts?: boolean
 }
 
-export async function getSettingsApi(): Promise<UserSettingsPayload | null> {
+export async function fetchUserSettingsApi(): Promise<UserSettingsPayload | null> {
   try {
     const res = await fetch(`${BASE_URL}/api/settings`, {
       headers: getAuthHeaders(),
@@ -458,7 +412,11 @@ export async function getSettingsApi(): Promise<UserSettingsPayload | null> {
   return null
 }
 
-export async function saveSettingsApi(settings: UserSettingsPayload): Promise<{ success: boolean; message?: string }> {
+export const getSettingsApi = fetchUserSettingsApi
+
+export async function saveSettingsApi(
+  settings: UserSettingsPayload
+): Promise<{ success: boolean; message?: string }> {
   try {
     const res = await fetch(`${BASE_URL}/api/settings`, {
       method: 'POST',
@@ -503,4 +461,32 @@ export async function revokeDeviceSessionApi(sessionId: string | number) {
   } catch (err: any) {
     return { success: false, message: err.message || 'Gagal terhubung ke server' }
   }
+}
+
+export async function fetchEvaluationsApi() {
+  try {
+    const res = await fetch(`${BASE_URL}/api/evaluations`, {
+      headers: getAuthHeaders(),
+    })
+    if (res.ok) {
+      return await res.json()
+    }
+  } catch (err) {
+    console.warn('Failed to fetch evaluations from BE:', err)
+  }
+  return null
+}
+
+export async function fetchGenesisSummaryApi() {
+  try {
+    const res = await fetch(`${BASE_URL}/api/genesis/summary`, {
+      headers: getAuthHeaders(),
+    })
+    if (res.ok) {
+      return await res.json()
+    }
+  } catch (err) {
+    console.warn('Failed to fetch genesis summary from BE:', err)
+  }
+  return null
 }
