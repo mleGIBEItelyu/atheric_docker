@@ -269,14 +269,14 @@ export async function fetchStock(ticker = 'BBCA'): Promise<Stock> {
           ticker: data.ticker,
           initial: data.ticker.slice(0, 2),
           name: data.name || data.ticker,
-          price: data.price ? `Rp ${data.price.toLocaleString('id-ID')}` : '—',
+          price: data.price ? `Rp ${data.price.toLocaleString('id-ID')}` : '-',
           change: data.changePercent !== undefined ? `${data.changePercent >= 0 ? '+' : ''}${data.changePercent.toFixed(2)}%` : '0.00%',
           dir: (data.changePercent !== undefined ? data.changePercent >= 0 : data.change >= 0) ? 'up' : 'down',
           ohlc: [
-            { label: 'Open', value: data.price ? `Rp ${(data.price * 0.99).toLocaleString('id-ID')}` : '—' },
-            { label: 'High', value: data.price ? `Rp ${(data.price * 1.02).toLocaleString('id-ID')}` : '—' },
-            { label: 'Low', value: data.price ? `Rp ${(data.price * 0.98).toLocaleString('id-ID')}` : '—' },
-            { label: 'Prev Close', value: data.price ? `Rp ${data.price.toLocaleString('id-ID')}` : '—' },
+            { label: 'Open', value: data.price ? `Rp ${(data.price * 0.99).toLocaleString('id-ID')}` : '-' },
+            { label: 'High', value: data.price ? `Rp ${(data.price * 1.02).toLocaleString('id-ID')}` : '-' },
+            { label: 'Low', value: data.price ? `Rp ${(data.price * 0.98).toLocaleString('id-ID')}` : '-' },
+            { label: 'Prev Close', value: data.price ? `Rp ${data.price.toLocaleString('id-ID')}` : '-' },
           ],
           ratios: [
             { label: 'P/E', value: '18.4x' },
@@ -299,7 +299,7 @@ export async function fetchStock(ticker = 'BBCA'): Promise<Stock> {
     ticker,
     initial: ticker.slice(0, 2),
     name: ticker,
-    price: '—',
+    price: '-',
     change: '0.00%',
     dir: 'up',
     ohlc: [],
@@ -322,15 +322,25 @@ export async function fetchForecast(ticker = 'BBCA', range = '3M'): Promise<Fore
         const step = Math.round((yMax - yMin) / 4)
         const yTicks = [yMin, yMin + step, yMin + step * 2, yMin + step * 3, yMax]
 
+        const rawModel = (data.model || 'Generative AI (Sequence Transformer)').replace(/genesis2\.0/gi, 'Generative AI').replace(/model_c/gi, 'Sequence Transformer')
+        const MONTHS_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+        const curMonth = new Date().getMonth()
+        const xLabels = Array.from({ length: 10 }, (_, i) => {
+          const mIdx = (curMonth + (i - 4) + 120) % 12
+          return MONTHS_ID[mIdx]
+        })
+
+        const horizonDays = data.horizonDays || (range === '3M' ? 60 : 20)
+        const horizonText = range === '3M' ? '3 Bulan' : '1 Bulan'
         const result: ForecastData = {
-          title: data.model || 'Proyeksi Harga Generative Financial AI',
-          caption: data.signal ? `Sinyal Model: ${data.signal} • Horizon ${data.horizonDays || 20} Hari Trading` : 'Proyeksi 20 Hari Trading',
-          ranges: ['1M', '3M', '6M', '1Y'],
+          title: rawModel,
+          caption: data.signal ? `Sinyal Model: ${data.signal} • Horizon ${horizonDays} Hari Trading (${horizonText})` : `Proyeksi ${horizonText} Trading`,
+          ranges: ['1M', '3M'],
           activeRange: range,
           yMin,
           yMax,
           yTicks,
-          xLabels: ['T-4', 'T-3', 'T-2', 'T-1', 'Hari Ini', 'T+1', 'T+2', 'T+3', 'T+4', 'T+5'],
+          xLabels,
           actual: data.actual || [],
           forecast: data.forecast || [],
           ciUpper: data.ciUpper || [],
@@ -348,7 +358,7 @@ export async function fetchForecast(ticker = 'BBCA', range = '3M'): Promise<Fore
   if (cached) return cached
 
   return {
-    title: 'Proyeksi Harga Generative Financial AI',
+    title: 'Generative AI (Sequence Transformer)',
     caption: 'Memuat data proyeksi...',
     ranges: ['1M', '3M', '6M', '1Y'],
     activeRange: range,
@@ -373,14 +383,15 @@ export async function fetchTarget(ticker = 'BBCA'): Promise<TargetData> {
     if (res.ok) {
       const data = await res.json()
       if (data && data.targetPrice) {
+        const rawTargetModel = (data.model || 'Generative AI (Sequence Transformer)').replace(/genesis2\.0/gi, 'Generative AI').replace(/model_c/gi, 'Sequence Transformer')
         const result: TargetData = {
-          title: data.model || 'Target Harga & Batas Risiko Model AI',
+          title: rawTargetModel,
           price: data.targetPrice,
           rec: data.rec || 'BUY',
           upside: data.upside || '+0.0% Target Kenaikan',
           sliderPct: data.sliderPct || 80,
           stats: [
-            { label: 'Stop Loss Area', value: data.stopLoss || '—' },
+            { label: 'Stop Loss Area', value: data.stopLoss || '-' },
             { label: 'Risk / Reward', value: data.riskReward || '1 : 2.1' },
             { label: 'Model Confidence', value: data.confidence || '85%' },
           ],
@@ -402,9 +413,9 @@ export async function fetchTarget(ticker = 'BBCA'): Promise<TargetData> {
 
   return {
     title: 'Target Harga AI',
-    price: '—',
+    price: '-',
     rec: 'HOLD',
-    upside: '—',
+    upside: '-',
     sliderPct: 50,
     stats: [],
     disclaimer: 'Bukan jaminan imbal hasil pasti.',
@@ -578,8 +589,25 @@ export interface UserSettingsPayload {
   theme?: string
   topbarIndex?: string
   autoRefreshInterval?: number
+  sentimentAlerts?: boolean
+  keyLevelAlerts?: boolean
+  newsAlerts?: boolean
   emailAlerts?: boolean
   inAppAlerts?: boolean
+}
+
+export async function sendTestNotificationApi(type: string): Promise<{ success: boolean; data?: any }> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/notifications/test`, {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({ type }),
+    })
+    const data = await res.json()
+    return { success: res.ok, data }
+  } catch (err) {
+    return { success: false }
+  }
 }
 
 export async function fetchUserSettingsApi(): Promise<UserSettingsPayload | null> {
@@ -673,4 +701,74 @@ export async function fetchGenesisSummaryApi() {
     console.warn('Failed to fetch genesis summary from BE:', err)
   }
   return null
+}
+
+// --- Notifications Endpoints ---
+
+export interface NotificationItem {
+  id: string | number
+  title: string
+  body: string
+  time: string
+  category: 'alert' | 'sentiment' | 'system' | 'volume'
+  impact: 'High' | 'Medium' | 'Info'
+  read: boolean
+  createdAt?: string
+}
+
+export async function fetchNotificationsApi(): Promise<NotificationItem[]> {
+  const token = localStorage.getItem('atheric_token')
+  if (!token || token === 'null' || token === 'undefined') {
+    return []
+  }
+  try {
+    const res = await fetch(`${BASE_URL}/api/notifications`, {
+      headers: getAuthHeaders(token),
+    })
+    if (res.ok) {
+      const data = await res.json()
+      if (Array.isArray(data)) {
+        return data
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to fetch notifications from BE:', err)
+  }
+  return []
+}
+
+export async function markAllNotificationsReadApi(): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/notifications/read-all`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+export async function toggleNotificationReadApi(id: string | number): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/notifications/${id}/toggle-read`, {
+      method: 'PUT',
+      headers: getAuthHeaders(),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+export async function clearNotificationsApi(): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE_URL}/api/notifications`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    })
+    return res.ok
+  } catch {
+    return false
+  }
 }

@@ -281,6 +281,10 @@ func InitGenesisManager() *GenesisManager {
 // findAndSetBaseDir searches for the genesis directory in common path relative locations
 func (m *GenesisManager) findAndSetBaseDir() string {
 	if custom := os.Getenv("GENESIS_DIR"); custom != "" {
+		if _, err := os.Stat(filepath.Join(custom, "release.json")); err == nil {
+			m.baseDir = custom
+			return custom
+		}
 		if _, err := os.Stat(custom); err == nil {
 			m.baseDir = custom
 			return custom
@@ -290,6 +294,8 @@ func (m *GenesisManager) findAndSetBaseDir() string {
 	candidates := []string{
 		"../genesis",
 		"./genesis",
+		"/app/genesis",
+		"/genesis",
 		"../../genesis",
 		"genesis",
 	}
@@ -577,15 +583,12 @@ func (m *GenesisManager) GenerateDynamicForecast(ticker string, currentPrice flo
 	defer m.mu.RUnlock()
 
 	horizon := 20
-	modelName := "Genesis2.0 (Transformer Sequence Model)"
-	if m.release != nil {
-		modelName = fmt.Sprintf("%s (%s)", m.release.Name, m.release.Family)
-	}
+	modelName := "Proyeksi Harga AI"
 	if m.config != nil && m.config.Labeling.HorizonDays > 0 {
 		horizon = m.config.Labeling.HorizonDays
 	}
 
-	// Normalize signal according to Genesis rank_signed scheme
+	// Normalize signal according to rank_signed scheme
 	signal := "BULLISH"
 	predReturnPct := 8.5
 	if baseSignal != "" {
@@ -612,15 +615,19 @@ func (m *GenesisManager) GenerateDynamicForecast(ticker string, currentPrice flo
 
 	upsideText := fmt.Sprintf("%+.1f%% Proyeksi %d-Hari (%s)", predReturnPct, horizon, signal)
 
-	// Build smooth 6-step forecast curve from current price to target
+	// Build smooth 5-step history (T-4..Hari Ini) and 6-step forecast (Hari Ini..T+5)
 	steps := 6
-	histSteps := 10
+	histSteps := 5
 	histPoints := make([]float64, histSteps)
-	startHist := currentPrice * 0.94
+	startHist := currentPrice * 0.96
 	for i := 0; i < histSteps; i++ {
 		t := float64(i) / float64(histSteps-1)
-		noise := math.Sin(t*math.Pi*2) * (currentPrice * 0.012)
-		histPoints[i] = math.Round(startHist + (currentPrice-startHist)*t + noise)
+		noise := math.Sin(t*math.Pi*2) * (currentPrice * 0.008)
+		if i == histSteps-1 {
+			histPoints[i] = currentPrice
+		} else {
+			histPoints[i] = math.Round(startHist + (currentPrice-startHist)*t + noise)
+		}
 	}
 
 	forecastPoints := make([]float64, steps)
@@ -637,7 +644,7 @@ func (m *GenesisManager) GenerateDynamicForecast(ticker string, currentPrice flo
 		proj := currentPrice + (targetPrice-currentPrice)*t
 		forecastPoints[i] = math.Round(proj)
 
-		spread := currentPrice * volatilitySpread * math.Sqrt(t+0.1)
+		spread := currentPrice * volatilitySpread * math.Sqrt(t+0.05)
 		ciUpper[i] = math.Round(proj + spread)
 		ciLower[i] = math.Round(proj - spread)
 	}

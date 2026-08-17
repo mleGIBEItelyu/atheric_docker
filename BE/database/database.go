@@ -64,6 +64,8 @@ func InitDB() *gorm.DB {
 		&models.UserSetting{},
 		&models.DeviceSession{},
 		&models.ModelForecastCache{},
+		&models.Notification{},
+		&models.StockSynthesis{},
 	)
 	if err != nil {
 		log.Fatalf("Database migration failed: %v", err)

@@ -15,6 +15,11 @@ bin/
 *.dylib
 
 # Database files
+BE/data/
+data/
+*.db
+*.db-shm
+*.db-wal
 data/*.db-journal
 *.db-journal
 

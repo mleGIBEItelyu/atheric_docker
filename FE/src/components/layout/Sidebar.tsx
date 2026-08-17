@@ -1,7 +1,9 @@
 import { Link, useLocation } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 import { GridIcon, BarsIcon, EyeIcon, GearIcon, HelpIcon, ClipboardIcon, BellIcon } from '@/components/common/icons'
 import { NAV_ITEMS } from '@/data/constants'
 import { useAuth } from '@/context/AuthContext'
+import { fetchNotificationsApi, type NotificationItem } from '@/services/api'
 
 const ICON_MAP: Record<string, React.ReactNode> = {
   grid: <GridIcon />, bars: <BarsIcon />, eye: <EyeIcon />,
@@ -16,6 +18,14 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { pathname, hash } = useLocation()
   const { user, isAuthenticated, isAdmin } = useAuth()
+
+  const { data: notifications = [] } = useQuery<NotificationItem[]>({
+    queryKey: ['notifications'],
+    queryFn: fetchNotificationsApi,
+    staleTime: 15 * 1000,
+    refetchInterval: 30 * 1000,
+  })
+  const unreadCount = notifications.filter(n => !n.read).length
   
   function handleNavClick() {
     onClose() // Automatically close sidebar drawer on mobile after clicking link
@@ -74,7 +84,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
           </div>
         </div>
 
-        {/* Admin Portal Link — visible only for ADMIN role */}
+        {/* Admin Portal Link - visible only for ADMIN role */}
         {isAdmin && (
           <Link
             to="/admin"

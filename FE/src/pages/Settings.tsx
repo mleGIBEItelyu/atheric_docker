@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import { Select } from '@/components/common/Select'
 import { useToast } from '@/components/common/Toast'
 import { useAuth } from '@/context/AuthContext'
-import { getSettingsApi, saveSettingsApi, fetchDeviceSessionsApi, revokeDeviceSessionApi } from '@/services/api'
+import { getSettingsApi, saveSettingsApi, sendTestNotificationApi, fetchDeviceSessionsApi, revokeDeviceSessionApi } from '@/services/api'
 
 function applyTheme(theme: string) {
   if (theme === 'dark') {
@@ -65,6 +66,7 @@ interface DeviceSession {
 
 export function Settings() {
   const toast = useToast()
+  const queryClient = useQueryClient()
   const { user, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
@@ -89,42 +91,11 @@ export function Settings() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showLogoutModal, setShowLogoutModal] = useState(false)
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>(
-    'Notification' in window ? Notification.permission : 'denied'
+    typeof window !== 'undefined' && 'Notification' in window ? Notification.permission : 'denied'
   )
 
-  // Demo active sessions for user account
-  const [sessions, setSessions] = useState<DeviceSession[]>([
-    {
-      id: 'sess-current',
-      device: 'Windows PC (Terminal)',
-      browser: 'Chrome 122',
-      ip: '180.252.19.42',
-      location: 'Jakarta, ID',
-      firstLoginDaysAgo: 3, // Logged in 3 days ago (< 7 days cooldown)
-      lastActive: 'Aktif Sekarang',
-      isCurrent: true,
-    },
-    {
-      id: 'sess-mac',
-      device: 'MacBook Pro 16"',
-      browser: 'Safari 17',
-      ip: '182.1.88.104',
-      location: 'Bandung, ID',
-      firstLoginDaysAgo: 14,
-      lastActive: '2 hari lalu',
-      isCurrent: false,
-    },
-    {
-      id: 'sess-mobile',
-      device: 'Samsung Galaxy S24',
-      browser: 'Mobile App',
-      ip: '114.122.45.12',
-      location: 'Surabaya, ID',
-      firstLoginDaysAgo: 21,
-      lastActive: '5 hari lalu',
-      isCurrent: false,
-    },
-  ])
+  // Real active & historical device sessions for user account
+  const [sessions, setSessions] = useState<DeviceSession[]>([])
 
   // Load account settings & real device sessions from Backend DB on mount
   useEffect(() => {
@@ -139,9 +110,9 @@ export function Settings() {
           applyTheme(data.theme)
         }
         setNotifEnabled({
-          sentiment: Boolean(data.inAppAlerts),
-          keylevels: Boolean(data.inAppAlerts),
-          news: Boolean(data.emailAlerts),
+          sentiment: data.sentimentAlerts !== undefined ? Boolean(data.sentimentAlerts) : true,
+          keylevels: data.keyLevelAlerts !== undefined ? Boolean(data.keyLevelAlerts) : true,
+          news: data.newsAlerts !== undefined ? Boolean(data.newsAlerts) : true,
         })
       }
 
@@ -162,7 +133,7 @@ export function Settings() {
   }
 
   async function handleNotifToggle(key: string, wantOn: boolean) {
-    if (wantOn && notifPermission !== 'granted') {
+    if (wantOn && notifPermission !== 'granted' && typeof window !== 'undefined' && 'Notification' in window) {
       const result = await Notification.requestPermission()
       setNotifPermission(result)
       if (result !== 'granted') {
@@ -175,13 +146,27 @@ export function Settings() {
     setNotifEnabled(prev => ({ ...prev, [key]: wantOn }))
   }
 
-  function sendTestNotif(item: typeof NOTIF_ITEMS[number]) {
-    if (notifPermission !== 'granted') {
-      toast.error('Izin belum diberikan', 'Aktifkan toggle terlebih dahulu untuk meminta izin.')
-      return
+  async function sendTestNotif(item: typeof NOTIF_ITEMS[number]) {
+    let perm = notifPermission
+    if (perm !== 'granted' && typeof window !== 'undefined' && 'Notification' in window) {
+      const result = await Notification.requestPermission()
+      setNotifPermission(result)
+      perm = result
     }
-    sendBrowserNotif(item.demo.title, item.demo.body)
-    toast.info('Test notifikasi dikirim', item.demo.title)
+
+    try {
+      const res = await sendTestNotificationApi(item.key)
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      const notifData = res.data
+      if (notifData && perm === 'granted') {
+        sendBrowserNotif(notifData.title, notifData.body)
+        toast.success('Alert Riil Terkirim', notifData.title)
+      } else if (notifData) {
+        toast.info('Alert Riil Masuk ke Notifikasi', notifData.title)
+      }
+    } catch (e) {
+      console.warn('Failed sending live notification:', e)
+    }
   }
 
   // Save Settings to Backend DB for this specific Account
@@ -192,13 +177,17 @@ export function Settings() {
       confidenceInterval: confidence,
       topbarIndex: defaultIndex,
       theme,
+      sentimentAlerts: notifEnabled.sentiment ?? true,
+      keyLevelAlerts: notifEnabled.keylevels ?? true,
+      newsAlerts: notifEnabled.news ?? true,
       emailAlerts: notifEnabled.news ?? true,
-      inAppAlerts: notifEnabled.sentiment ?? true,
+      inAppAlerts: (notifEnabled.sentiment || notifEnabled.keylevels) ?? true,
     })
     setSaving(false)
 
     if (res.success) {
       setSavedFeedback(true)
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
       setTimeout(() => setSavedFeedback(false), 2000)
       toast.success('Pengaturan Disimpan ke Akun', `Pengaturan khusus akun ${user?.username || ''} tersimpan di Database.`)
     } else {
@@ -424,7 +413,7 @@ export function Settings() {
                             <svg width="12" height="12" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M8 5v14l11-7z" />
                             </svg>
-                            Kirim Test Notifikasi
+                            Picu Alert Sekarang
                           </button>
                         )}
                       </div>
@@ -636,8 +625,29 @@ export function Settings() {
                 </p>
                 <button
                   onClick={() => setShowDeleteModal(true)}
-                  className="stock-btn sell"
-                  style={{ cursor: 'pointer', height: '42px', padding: '0 20px' }}
+                  style={{
+                    cursor: 'pointer',
+                    height: '42px',
+                    padding: '0 20px',
+                    background: 'rgba(240, 86, 75, 0.15)',
+                    border: '1px solid rgba(240, 86, 75, 0.45)',
+                    color: '#f0564b',
+                    borderRadius: 'var(--radius-sm)',
+                    fontWeight: 700,
+                    fontSize: '13px',
+                    transition: 'all 0.2s',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#f0564b'
+                    e.currentTarget.style.color = '#ffffff'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(240, 86, 75, 0.15)'
+                    e.currentTarget.style.color = '#f0564b'
+                  }}
                 >
                   Hapus Akun Permanen
                 </button>

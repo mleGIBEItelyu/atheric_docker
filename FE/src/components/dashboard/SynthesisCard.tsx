@@ -14,23 +14,24 @@ export function SynthesisCard({ ticker }: Props) {
 
   const hasKey = hasGeminiKey()
 
-  useEffect(() => {
+  const fetchSynthesis = (force = false) => {
     if (!hasKey) return
-    if (generatedRef.current === ticker) return
-
-    generatedRef.current = ticker
-    setRagParagraphs(null)
     setError(null)
     setIsGenerating(true)
 
-    generateSynthesis(ticker)
+    generateSynthesis(ticker, force)
       .then(result => setRagParagraphs(result))
       .catch(err => {
         const msg = err instanceof Error ? err.message : 'Terjadi kesalahan'
         setError(msg)
-        generatedRef.current = null
       })
       .finally(() => setIsGenerating(false))
+  }
+
+  useEffect(() => {
+    if (generatedRef.current === ticker) return
+    generatedRef.current = ticker
+    fetchSynthesis(false)
   }, [ticker, hasKey])
 
   const paragraphs = ragParagraphs ?? staticData?.paragraphs ?? []
@@ -38,30 +39,40 @@ export function SynthesisCard({ ticker }: Props) {
 
   return (
     <section className="card panel-card synth-card">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '14px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
         <span className="card-title" style={{ margin: 0 }}>AI Synthesis</span>
-        {isRag && !isGenerating && (
-          <span style={{
-            fontSize: '9.5px', fontWeight: 700, padding: '2px 7px', borderRadius: '999px',
-            background: 'var(--blue-soft)', border: '1px solid rgba(79,125,255,0.25)',
-            color: 'var(--blue-bright)', letterSpacing: '0.04em', textTransform: 'uppercase',
-            display: 'flex', alignItems: 'center', gap: '4px',
-          }}>
-            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M12 3v3M12 18v3M5 12H2M22 12h-3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1" />
-              <circle cx="12" cy="12" r="3.2" />
-            </svg>
-            RAG · Gemini
-          </span>
-        )}
-        {isGenerating && (
-          <span style={{
-            fontSize: '10px', color: 'var(--text-mute)', display: 'flex', alignItems: 'center', gap: '5px',
-          }}>
-            <span style={{ width: '10px', height: '10px', border: '1.5px solid var(--border-strong)', borderTopColor: 'var(--blue)', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
-            Generating…
-          </span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {isGenerating ? (
+            <span style={{
+              fontSize: '10px', color: 'var(--text-mute)', display: 'flex', alignItems: 'center', gap: '5px',
+            }}>
+              <span style={{ width: '10px', height: '10px', border: '1.5px solid var(--border-strong)', borderTopColor: 'var(--blue)', borderRadius: '50%', display: 'inline-block', animation: 'spin 0.8s linear infinite' }} />
+              Menganalisis...
+            </span>
+          ) : (
+            <button
+              onClick={() => fetchSynthesis(true)}
+              title="Perbarui analisis harian (Force Refresh)"
+              style={{
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-mute)',
+                cursor: 'pointer',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '10.5px',
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+              </svg>
+              Refresh
+            </button>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -93,17 +104,23 @@ export function SynthesisCard({ ticker }: Props) {
 
       {!isGenerating && (
         <div className="synth-scroll">
-          {paragraphs.map((p, i) => (
-            <p key={`${ticker}-${i}`} className="synth-para" style={{
-              animation: isRag ? `synthParaIn 0.4s ease ${i * 0.15}s both` : 'none',
-            }}>
-              {p}
-            </p>
-          ))}
+          {paragraphs.map((p, i) => {
+            const cleanText = p.replace(/\*\*(.*?)\*\*/g, '$1').replace(/\*/g, '').trim()
+            return (
+              <p key={`${ticker}-${i}`} className="synth-para" style={{
+                animation: isRag ? `synthParaIn 0.4s ease ${i * 0.15}s both` : 'none',
+                lineHeight: 1.65,
+                color: 'var(--text-dim)',
+                marginBottom: '10px',
+              }}>
+                {cleanText}
+              </p>
+            )
+          })}
         </div>
       )}
 
-      {isRag && !isGenerating && (
+      {!isGenerating && (
         <div style={{
           marginTop: '10px', paddingTop: '8px', borderTop: '1px solid var(--border)',
           fontSize: '10.5px', color: 'var(--text-mute)', display: 'flex', alignItems: 'center', gap: '6px',
@@ -111,7 +128,7 @@ export function SynthesisCard({ ticker }: Props) {
           <span style={{ width: '12px', height: '12px', flexShrink: 0, color: 'var(--blue-bright)' }}>
             <SparkIcon />
           </span>
-          Generated by Gemini · Bukan saran investasi
+          Analisis Harian Tersimpan di Database · Bukan saran investasi
         </div>
       )}
     </section>

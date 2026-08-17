@@ -198,7 +198,7 @@ export function Evaluasi() {
       <div className="page-head">
         <div className="page-title">EVALUASI MODEL AI</div>
         <div className="page-sub">
-          Laporan validasi kuantitatif historis model Generative Financial AI — Backtest Out-of-Sample, Information Coefficient, dan akurasi pergerakan harga.
+          Laporan validasi kuantitatif historis model Generative Financial AI - Backtest Out-of-Sample, Information Coefficient, dan akurasi pergerakan harga.
         </div>
       </div>
 

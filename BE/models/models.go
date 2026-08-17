@@ -150,6 +150,9 @@ type UserSetting struct {
 	ConfidenceInterval string    `gorm:"default:'90'" json:"confidenceInterval"`
 	TopbarIndex        string    `gorm:"default:'IHSG'" json:"topbarIndex"`
 	Theme              string    `gorm:"default:'dark'" json:"theme"`
+	SentimentAlerts    bool      `gorm:"default:true" json:"sentimentAlerts"`
+	KeyLevelAlerts     bool      `gorm:"default:true" json:"keyLevelAlerts"`
+	NewsAlerts         bool      `gorm:"default:true" json:"newsAlerts"`
 	EmailAlerts        bool      `gorm:"default:true" json:"emailAlerts"`
 	InAppAlerts        bool      `gorm:"default:true" json:"inAppAlerts"`
 	UpdatedAt          time.Time `json:"updatedAt"`
@@ -190,4 +193,28 @@ type ModelForecastCache struct {
 	CachedAt       time.Time `json:"cachedAt"`
 	ExpiresAt      time.Time `json:"expiresAt"`
 }
+
+// Notification represents dynamic in-app alerts (New Device Logins, Volume Spikes, Sentiment Shifts, Key Levels)
+type Notification struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	UserID    uint      `gorm:"index;not null" json:"userId"` // 0 = broadcast / public / system, >0 = specific user
+	Title     string    `gorm:"not null" json:"title"`
+	Body      string    `gorm:"not null" json:"body"`
+	Category  string    `gorm:"not null" json:"category"` // volume, alert, sentiment, system
+	Impact    string    `gorm:"default:'Info'" json:"impact"` // High, Medium, Info
+	Read      bool      `gorm:"default:false" json:"read"`
+	Time      string    `json:"time"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// StockSynthesis caches daily AI synthesis per ticker in the SQLite database to avoid burning LLM tokens
+type StockSynthesis struct {
+	ID         uint      `gorm:"primaryKey" json:"id"`
+	Ticker     string    `gorm:"uniqueIndex:idx_ticker_date;size:20;not null" json:"ticker"`
+	DateKey    string    `gorm:"uniqueIndex:idx_ticker_date;size:10;not null" json:"dateKey"` // Format: YYYY-MM-DD
+	Paragraphs string    `gorm:"type:text;not null" json:"paragraphs"` // JSON array e.g. ["par1", "par2"]
+	CreatedAt  time.Time `json:"createdAt"`
+	UpdatedAt  time.Time `json:"updatedAt"`
+}
+
 

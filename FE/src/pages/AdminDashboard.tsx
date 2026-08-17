@@ -223,7 +223,7 @@ function TrafficTab({ stats, connected, history }: { stats: TrafficStats | null;
             boxShadow: connected ? "0 0 6px #3ecf8e" : "none",
           }} />
           <span style={{ fontSize: "12px", color: "var(--text-dim)" }}>
-            {connected ? "WebSocket terhubung — stream data realtime" : "WebSocket terputus — mencoba ulang..."}
+            {connected ? "WebSocket terhubung - stream data realtime" : "WebSocket terputus - mencoba ulang..."}
           </span>
         </div>
         <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>
@@ -233,10 +233,10 @@ function TrafficTab({ stats, connected, history }: { stats: TrafficStats | null;
 
       {/* Exactly 4 Key Info Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px", width: "100%" }}>
-        <StatCard label="Pengguna / Koneksi Aktif" value={stats ? activeConn : "—"} sub={unique15m > 0 ? `${unique15m} IP unik aktif (15m)` : "1 sesi terhubung"} accent="#4f7dff" />
-        <StatCard label="Total Request HTTP" value={stats ? totReq : "—"} sub={`${req5m} req dalam 5 menit terakhir`} />
-        <StatCard label="Kecepatan Trafik" value={stats ? `${req1m} req/m` : "—"} sub={`Peak: ${peakReq} req/m (${req15m} req/15m)`} />
-        <StatCard label="Bot Dicegah" value={stats ? blockedBots : "—"} sub="Script & spam login/register diblokir" accent={blockedBots > 0 ? "#f0564b" : "#3ecf8e"} />
+        <StatCard label="Pengguna / Koneksi Aktif" value={stats ? activeConn : "-"} sub={unique15m > 0 ? `${unique15m} IP unik aktif (15m)` : "1 sesi terhubung"} accent="#4f7dff" />
+        <StatCard label="Total Request HTTP" value={stats ? totReq : "-"} sub={`${req5m} req dalam 5 menit terakhir`} />
+        <StatCard label="Kecepatan Trafik" value={stats ? `${req1m} req/m` : "-"} sub={`Peak: ${peakReq} req/m (${req15m} req/15m)`} />
+        <StatCard label="Bot Dicegah" value={stats ? blockedBots : "-"} sub="Script & spam login/register diblokir" accent={blockedBots > 0 ? "#f0564b" : "#3ecf8e"} />
       </div>
 
       {/* Request history chart */}
@@ -447,8 +447,16 @@ function UsersTab() {
       {err && <div style={{ color: "var(--red)", fontSize: "13px", padding: "10px 14px", background: "rgba(240,86,75,0.1)", borderRadius: "var(--radius-sm)" }}>{err}</div>}
 
       {/* Table */}
-      <div style={{ overflowX: "auto", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+      <div style={{
+        overflowX: "auto",
+        WebkitOverflowScrolling: "touch",
+        borderRadius: "var(--radius)",
+        border: "1px solid var(--border)",
+        width: "100%",
+        maxWidth: "100%",
+        display: "block",
+      }}>
+        <table style={{ width: "100%", minWidth: "820px", borderCollapse: "collapse", fontSize: "13px" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,0.02)" }}>
               {["ID User", "Username", "Email", "Role", "Verified", "Status", "Dibuat", "Aksi"].map(h => (
@@ -484,7 +492,7 @@ function UsersTab() {
                   }}>{u.isActive ? "Aktif" : "Nonaktif"}</span>
                 </td>
                 <td style={{ padding: "12px 14px", color: "var(--text-dim)", whiteSpace: "nowrap" }}>
-                  {u.createdAt ? new Date(u.createdAt).toLocaleDateString("id-ID") : "—"}
+                  {u.createdAt ? new Date(u.createdAt).toLocaleDateString("id-ID") : "-"}
                 </td>
                 <td style={{ padding: "12px 14px" }}>
                   <div style={{ display: "flex", gap: "6px" }}>
@@ -776,8 +784,16 @@ function ActivityLogsTab() {
       {err && <div style={{ color: "var(--red)", fontSize: "13px", padding: "10px 14px", background: "rgba(240,86,75,0.1)", borderRadius: "var(--radius-sm)" }}>{err}</div>}
 
       {/* Read-Only Table */}
-      <div className="ad-animate" style={{ overflowX: "auto", borderRadius: "var(--radius)", border: "1px solid var(--border)" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "13px" }}>
+      <div className="ad-animate" style={{
+        overflowX: "auto",
+        WebkitOverflowScrolling: "touch",
+        borderRadius: "var(--radius)",
+        border: "1px solid var(--border)",
+        width: "100%",
+        maxWidth: "100%",
+        display: "block",
+      }}>
+        <table style={{ width: "100%", minWidth: "750px", borderCollapse: "collapse", fontSize: "13px" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,0.02)" }}>
               {["Waktu", "User", "Role", "Jenis Aksi", "Detail Aktivitas", "IP Address"].map(h => (
@@ -800,7 +816,7 @@ function ActivityLogsTab() {
             ) : filtered.map((l, idx) => (
               <tr key={l.id} style={{ borderBottom: "1px solid var(--border)", background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)" }}>
                 <td style={{ padding: "12px 14px", color: "var(--text-dim)", whiteSpace: "nowrap" }}>
-                  {l.createdAt ? new Date(l.createdAt).toLocaleString("id-ID") : "—"}
+                  {l.createdAt ? new Date(l.createdAt).toLocaleString("id-ID") : "-"}
                 </td>
                 <td style={{ padding: "12px 14px", fontWeight: 700, color: "var(--text)" }}>{l.username || "System"}</td>
                 <td style={{ padding: "12px 14px" }}>
@@ -846,7 +862,7 @@ export function AdminDashboard() {
           </svg>
         </div>
         <div style={{ fontSize: "22px", fontWeight: 900, color: "var(--text)", marginBottom: "8px" }}>
-          Akses Ditolak — Role-Based Access Control (RBAC)
+          Akses Ditolak - Role-Based Access Control (RBAC)
         </div>
         <div style={{ fontSize: "14px", color: "var(--text-dim)", maxWidth: "460px", lineHeight: 1.5, marginBottom: "24px" }}>
           Halaman dan fitur <strong>Admin Portal</strong> dilindungi secara ketat oleh sistem RBAC. Akun Anda (<strong>{user?.username || "USER"}</strong>) tidak memiliki hak akses <code>ADMIN</code>.
@@ -894,7 +910,15 @@ export function AdminDashboard() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: "24px" }}>
+      <div style={{
+        display: "flex",
+        overflowX: "auto",
+        WebkitOverflowScrolling: "touch",
+        borderBottom: "1px solid var(--border)",
+        marginBottom: "24px",
+        gap: "4px",
+        paddingBottom: "2px",
+      }}>
         <button className={`ad-tab${tab === "traffic" ? " active" : ""}`} onClick={() => setTab("traffic")}>
           <ActivityIcon /> Monitor Trafik
         </button>

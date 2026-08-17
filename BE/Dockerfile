@@ -24,10 +24,10 @@ FROM alpine:latest
 
 WORKDIR /app
 
-RUN apk --no-cache add ca-certificates tzdata
+RUN apk --no-cache add ca-certificates tzdata wget
 
-# Create data directory for SQLite database storage
-RUN mkdir -p /app/data
+# Create data directory for SQLite database storage and genesis artifacts
+RUN mkdir -p /app/data /app/genesis
 
 # Copy compiled binary from builder
 COPY --from=builder /app/server /app/server
@@ -36,5 +36,6 @@ EXPOSE 5000
 
 ENV PORT=5000
 ENV DB_PATH=/app/data/atheric.db
+ENV GENESIS_DIR=/app/genesis
 
 CMD ["/app/server"]

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -11,10 +9,12 @@ services:
       - "5000:5000"
     volumes:
       - ./BE/data:/app/data
+      - ./genesis:/app/genesis:ro
     environment:
       - PORT=5000
       - DB_PATH=/app/data/atheric.db
-      - ALLOWED_ORIGINS=http://localhost,http://localhost:80,http://127.0.0.1,http://127.0.0.1:80
+      - GENESIS_DIR=/app/genesis
+      - ALLOWED_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:80,http://127.0.0.1:5173
       - JWT_SECRET=${JWT_SECRET:-atheric_ai_super_secret_jwt_key_2026_change_in_prod}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-Atheric AI <onboarding@resend.dev>}
@@ -24,7 +24,7 @@ services:
       - atheric-net
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:5000/api/health || exit 1"]
-      interval: 15s
+      interval: 10s
       timeout: 5s
       retries: 3
       start_period: 5s
@@ -37,6 +37,8 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "3000:80"
+      - "5173:80"
     depends_on:
       backend:
         condition: service_healthy

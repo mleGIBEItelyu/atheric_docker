@@ -56,12 +56,13 @@ func CallGeminiAPI(contents []GeminiContent, systemPrompt string, temp float64, 
 		return "", errors.New("GEMINI_API_KEY belum dikonfigurasi di server Backend (.env)")
 	}
 
-	model := os.Getenv("GEMINI_MODEL")
-	if model == "" {
-		model = "gemini-2.0-flash"
+	primaryModel := os.Getenv("GEMINI_MODEL")
+	if primaryModel == "" || primaryModel == "gemini-2.0-flash" {
+		primaryModel = "gemini-flash-latest"
 	}
 
-	url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
+	modelCandidates := []string{primaryModel, "gemini-flash-latest", "gemini-3.6-flash", "gemini-3.7-flash"}
+	var lastErr error
 
 	reqBody := GeminiAPIRequest{
 		Contents: contents,
@@ -83,33 +84,45 @@ func CallGeminiAPI(contents []GeminiContent, systemPrompt string, temp float64, 
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return "", fmt.Errorf("failed to connect to Gemini API: %w", err)
-	}
-	defer resp.Body.Close()
 
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
+	for _, model := range modelCandidates {
+		url := fmt.Sprintf("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s", model, apiKey)
+		resp, err := client.Post(url, "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			lastErr = fmt.Errorf("failed to connect to Gemini API (%s): %w", model, err)
+			continue
+		}
+
+		bodyBytes, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("failed to read response body (%s): %w", model, err)
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			lastErr = fmt.Errorf("Gemini API error %d (%s): %s", resp.StatusCode, model, string(bodyBytes))
+			continue
+		}
+
+		var geminiResp GeminiAPIResponse
+		if err := json.Unmarshal(bodyBytes, &geminiResp); err != nil {
+			lastErr = fmt.Errorf("failed to parse Gemini response (%s): %w", model, err)
+			continue
+		}
+
+		if geminiResp.Error != nil {
+			lastErr = fmt.Errorf("Gemini API error (%s): %s", model, geminiResp.Error.Message)
+			continue
+		}
+
+		if len(geminiResp.Candidates) > 0 && len(geminiResp.Candidates[0].Content.Parts) > 0 {
+			return geminiResp.Candidates[0].Content.Parts[0].Text, nil
+		}
 	}
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("Gemini API error %d: %s", resp.StatusCode, string(bodyBytes))
+	if lastErr != nil {
+		return "", lastErr
 	}
-
-	var geminiResp GeminiAPIResponse
-	if err := json.Unmarshal(bodyBytes, &geminiResp); err != nil {
-		return "", fmt.Errorf("failed to parse Gemini response: %w", err)
-	}
-
-	if geminiResp.Error != nil {
-		return "", fmt.Errorf("Gemini API error: %s", geminiResp.Error.Message)
-	}
-
-	if len(geminiResp.Candidates) > 0 && len(geminiResp.Candidates[0].Content.Parts) > 0 {
-		return geminiResp.Candidates[0].Content.Parts[0].Text, nil
-	}
-
 	return "", errors.New("Gemini tidak mengembalikan respons teks")
 }

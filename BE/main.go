@@ -213,7 +213,9 @@ func main() {
 	api.Get("/target/:ticker", handlers.GetTarget)
 	api.Get("/keylevels/:ticker", handlers.GetKeyLevels)
 	api.Get("/sentiment/:ticker", handlers.GetSentiment)
-	api.Get("/synthesis/:ticker", handlers.GetSynthesis)
+	api.Get("/synthesis/:ticker", handlers.GetStockSynthesis)
+	api.Get("/stock/:ticker/synthesis", handlers.GetStockSynthesis)
+	api.Post("/stock/:ticker/synthesis/refresh", handlers.RefreshStockSynthesis)
 	api.Get("/ranking/highlights", handlers.GetRankingHighlights)
 	api.Get("/evaluations", handlers.GetEvaluations)
 	api.Get("/news", handlers.GetNews)
@@ -237,6 +239,11 @@ func main() {
 	protected.Post("/settings", handlers.SaveUserSettings)
 	protected.Get("/sessions", handlers.GetDeviceSessions)
 	protected.Delete("/sessions/:id", handlers.RevokeDeviceSession)
+	protected.Get("/notifications", handlers.GetNotifications)
+	protected.Post("/notifications/test", handlers.SendTestNotification)
+	protected.Put("/notifications/read-all", handlers.MarkAllNotificationsRead)
+	protected.Put("/notifications/:id/toggle-read", handlers.ToggleNotificationRead)
+	protected.Delete("/notifications", handlers.ClearNotifications)
 
 	// Admin Routes
 	admin := protected.Group("/admin", middleware.AdminOnly())

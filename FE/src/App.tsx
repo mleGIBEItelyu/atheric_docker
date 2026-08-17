@@ -1,19 +1,19 @@
-import { useState, lazy, Suspense } from 'react'
+import { useState } from 'react'
 import { Routes, Route } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { AuthProvider, useAuth } from '@/context/AuthContext'
 import { LoginPage } from '@/components/auth/LoginPage'
 
-// React lazy loading for pages to reduce bundle size and optimize token memory
-const Dashboard = lazy(() => import('@/pages/Dashboard').then(m => ({ default: m.Dashboard })))
-const Markets = lazy(() => import('@/pages/Markets').then(m => ({ default: m.Markets })))
-const Watchlist = lazy(() => import('@/pages/Watchlist').then(m => ({ default: m.Watchlist })))
-const Settings = lazy(() => import('@/pages/Settings').then(m => ({ default: m.Settings })))
-const Support = lazy(() => import('@/pages/Support').then(m => ({ default: m.Support })))
-const Evaluasi = lazy(() => import('@/pages/Evaluasi').then(m => ({ default: m.Evaluasi })))
-const Notifications = lazy(() => import('@/pages/Notifications').then(m => ({ default: m.Notifications })))
-const AdminDashboard = lazy(() => import('@/pages/AdminDashboard').then(m => ({ default: m.AdminDashboard })))
+import { Dashboard } from '@/pages/Dashboard'
+import { Markets } from '@/pages/Markets'
+import { Watchlist } from '@/pages/Watchlist'
+import { Settings } from '@/pages/Settings'
+import { Support } from '@/pages/Support'
+import { Evaluasi } from '@/pages/Evaluasi'
+import { Notifications } from '@/pages/Notifications'
+import { AdminDashboard } from '@/pages/AdminDashboard'
+import { usePushNotificationWatcher } from '@/hooks/usePushNotifications'
 
 function PageLoadingFallback() {
   return (
@@ -57,6 +57,9 @@ function PrivateAppContent() {
   const { isAuthenticated, isLoading } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
 
+  // Watch for real notifications and trigger browser Push Notifications if permission is granted
+  usePushNotificationWatcher()
+
   if (isLoading) {
     return (
       <div style={{
@@ -92,22 +95,20 @@ function PrivateAppContent() {
   }
 
   return (
-    <Suspense fallback={<PageLoadingFallback />}>
-      <Routes>
-        <Route element={<AppLayout onSearch={setSearchQuery} />}>
-          <Route path="/" element={<Markets searchQuery={searchQuery} />} />
-          <Route path="/markets" element={<Markets searchQuery={searchQuery} />} />
-          <Route path="/stock/:ticker" element={<Dashboard />} />
-          <Route path="/watchlist" element={<Watchlist />} />
-          <Route path="/evaluasi" element={<Evaluasi />} />
-          <Route path="/notifications" element={<Notifications />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/support" element={<Support />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          <Route path="*" element={<Markets searchQuery={searchQuery} />} />
-        </Route>
-      </Routes>
-    </Suspense>
+    <Routes>
+      <Route element={<AppLayout onSearch={setSearchQuery} />}>
+        <Route path="/" element={<Markets searchQuery={searchQuery} />} />
+        <Route path="/markets" element={<Markets searchQuery={searchQuery} />} />
+        <Route path="/stock/:ticker" element={<Dashboard />} />
+        <Route path="/watchlist" element={<Watchlist />} />
+        <Route path="/evaluasi" element={<Evaluasi />} />
+        <Route path="/notifications" element={<Notifications />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/support" element={<Support />} />
+        <Route path="/admin" element={<AdminDashboard />} />
+        <Route path="*" element={<Markets searchQuery={searchQuery} />} />
+      </Route>
+    </Routes>
   )
 }
 

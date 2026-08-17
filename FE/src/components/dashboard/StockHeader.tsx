@@ -45,7 +45,6 @@ export function StockHeader({ ticker }: Props) {
 
   return (
     <div className="stock-head">
-      <div className="stock-mark">{stock.initial}</div>
       <div className="stock-id">
         <div className="stock-row">
           <span className="stock-ticker">{stock.ticker}</span>

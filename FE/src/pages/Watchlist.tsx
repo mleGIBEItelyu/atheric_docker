@@ -52,7 +52,7 @@ function WatchlistItemCard({ ticker, onRemove }: { ticker: string; onRemove: (t:
             Harga Terkini
           </div>
           <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--text)', marginTop: '2px' }}>
-            {stock?.price || '—'}
+            {stock?.price || '-'}
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -67,7 +67,7 @@ function WatchlistItemCard({ ticker, onRemove }: { ticker: string; onRemove: (t:
               marginTop: '2px',
             }}
           >
-            {stock?.change || '—'}
+            {stock?.change || '-'}
           </div>
         </div>
       </div>

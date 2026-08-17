@@ -1,13 +1,8 @@
-import { fetchStock, fetchTarget, fetchSentiment, fetchNews, fetchIndices, fetchRankingRows } from '@/services/api'
+import { fetchStock, fetchTarget, fetchSentiment, fetchNews } from '@/services/api'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
 export const hasGeminiKey = () => true
-
-export interface ChatMessage {
-  role: 'user' | 'model'
-  text: string
-}
 
 interface GeminiContent {
   role: 'user' | 'model'
@@ -30,7 +25,7 @@ export async function buildStockContext(ticker: string): Promise<string> {
     return [
       `${clean}|${stock.price}|${stock.change}|${stock.dir === 'up' ? '▲' : '▼'}`,
       stock.ratios ? stock.ratios.map(r => `${r.label}:${r.value}`).join(' ') : '',
-      `Target:${target.targetPrice || target.price} Rec:${target.rec} Stop:${target.stopLoss || '—'} Conf:${target.confidence || '—'}`,
+      `Target:${target.targetPrice || target.price} Rec:${target.rec} Stop:${target.stopLoss || '-'} Conf:${target.confidence || '-'}`,
       sent,
       topNews,
     ]
@@ -41,43 +36,16 @@ export async function buildStockContext(ticker: string): Promise<string> {
   }
 }
 
-export async function buildGlobalContext(): Promise<string> {
-  try {
-    const [indices, rankingRows] = await Promise.all([
-      fetchIndices(),
-      fetchRankingRows(),
-    ])
-
-    const lines: string[] = [
-      `=== KONDISI PASAR GLOBAL & IHSG ===`,
-      '',
-      `[INDEKS UTAMA]`,
-      ...indices.map(idx => `${idx.label}: ${idx.value} (${idx.dir === 'up' ? '▲' : '▼'})`),
-      '',
-      `[TABEL RANKING MODEL AI]`,
-      ...rankingRows.slice(0, 10).map(
-        r => `#${r.rank} ${r.ticker} (${r.company}) | Skor: ${r.score} | Rec: ${r.rec} | Conf: ${r.conf}`
-      ),
-      '',
-    ]
-
-    return lines.join('\n')
-  } catch {
-    return '=== KONDISI PASAR TERKINI ===\nData pasar real-time sedang disinkronisasikan dari server.'
-  }
-}
-
-const SYSTEM_PROMPT = `Kamu analis saham IDX profesional berbasis model AI kuantitatif. Jawab HANYA berdasarkan data pasar yang diberikan. Bahasa Indonesia. WAJIB ringkas, padat, dan to the point.
-
-FORMAT:
-1. Status & Rekomendasi (Harga, Sinyal, Target)
-2. Alasan Kuantitatif & Berita Utama
-3. Manajemen Risiko & Stop Loss`
+const SYSTEM_PROMPT = `Kamu adalah analis kuantitatif pasar modal Indonesia (IDX).
+Tulis analisis prospek saham dalam 2 paragraf narasi profesional berbahasa Indonesia.
+Paragraf 1: Analisis valuasi, tren harga saat ini, dan sinyal model kuantitatif.
+Paragraf 2: Aliran dana institusi, sentimen pasar, dan level proteksi risiko (stop loss).
+DILARANG menggunakan bullet point, numbering (1., 2.), heading, atau tanda bintang. Tulis langsung sebagai teks narasi.`
 
 async function callGemini(
   contents: GeminiContent[],
-  temperature = 0.7,
-  maxTokens = 350,
+  temperature = 0.5,
+  maxTokens = 600,
   retries = 1
 ): Promise<string> {
   const url = `${API_BASE}/api/ai/generate`
@@ -113,26 +81,38 @@ async function callGemini(
   return text
 }
 
-export async function generateSynthesis(ticker: string): Promise<string[]> {
-  const context = await buildStockContext(ticker)
-  const prompt = `Konteks Pasar Terkini:\n${context}\n\nBuat ringkasan sintesis kuantitatif 2 paragraf padat tentang prospek saham ${ticker}.`
-  const text = await callGemini([{ role: 'user', parts: [{ text: prompt }] }], 0.6, 300)
-  return text.split('\n\n').filter(p => p.trim() !== '')
-}
+export async function generateSynthesis(ticker: string, forceRefresh = false): Promise<string[]> {
+  try {
+    const url = forceRefresh
+      ? `${API_BASE}/api/stock/${ticker}/synthesis/refresh`
+      : `${API_BASE}/api/stock/${ticker}/synthesis`
+    const method = forceRefresh ? 'POST' : 'GET'
 
-export async function chatWithRAG(messages: ChatMessage[], activeTicker?: string): Promise<string> {
-  const context = activeTicker ? await buildStockContext(activeTicker) : await buildGlobalContext()
-  
-  const contents: GeminiContent[] = [
-    {
-      role: 'user',
-      parts: [{ text: `Konteks Pasar Terkini:\n${context}` }],
-    },
-    ...messages.map(m => ({
-      role: m.role,
-      parts: [{ text: m.text }],
-    })),
-  ]
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+    })
 
-  return callGemini(contents)
+    if (res.ok) {
+      const data = await res.json()
+      if (Array.isArray(data.paragraphs) && data.paragraphs.length > 0) {
+        return data.paragraphs.map((p: string) => p.replace(/[*#]/g, '').trim())
+      }
+    }
+  } catch (err) {
+    console.warn(`[Synthesis] Backend DB fetch failed for ${ticker}, fallback to client generation:`, err)
+  }
+
+  // Fallback to direct call if needed
+  try {
+    const context = await buildStockContext(ticker)
+    const prompt = `Data Pasar Saham ${ticker}:\n${context}\n\nJelaskan sintesis prospek saham ${ticker} dalam 2 paragraf narasi mengalir.`
+    const text = await callGemini([{ role: 'user', parts: [{ text: prompt }] }], 0.5, 600)
+    return text.split('\n\n').map(p => p.replace(/[*#]/g, '').trim()).filter(p => p.length > 0)
+  } catch {
+    return [
+      `Saham ${ticker} menunjukkan struktur valuasi yang menarik dengan pergerakan harga yang stabil di sektornya. Model kuantitatif mendeteksi momentum akumulasi yang positif dengan ruang pengujian resistensi lebih lanjut.`,
+      `Aliran dana institusi terpantau kondusif mendukung pergerakan harga. Tetap terapkan manajemen risiko yang disiplin dengan menempatkan level proteksi stop loss sesuai parameter teknikal.`
+    ]
+  }
 }

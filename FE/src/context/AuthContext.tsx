@@ -45,9 +45,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (currentUser && currentUser.id) {
             setUser(currentUser)
             localStorage.setItem('atheric_user', JSON.stringify(currentUser))
+          } else {
+            localStorage.removeItem('atheric_token')
+            localStorage.removeItem('atheric_user')
+            setUser(null)
+            setToken(null)
           }
         } catch {
-          // Token invalid or backend offline, keep cached user
+          localStorage.removeItem('atheric_token')
+          localStorage.removeItem('atheric_user')
+          setUser(null)
+          setToken(null)
         }
       }
       setIsLoading(false)
