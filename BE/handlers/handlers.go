@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math"
@@ -598,21 +599,52 @@ func GetStockDetail(c *fiber.Ctx) error {
 	return c.JSON(stock)
 }
 
-// GetForecast returns dynamic model-driven forecasting data for ticker
+// GetForecast returns dynamic model-driven forecasting data for ticker (cached in DB monthly)
 func GetForecast(c *fiber.Ctx) error {
 	ticker := strings.ToUpper(c.Params("ticker"))
-	
+	periodMonth := time.Now().Format("2006-01")
+
+	// 1. Check DB Cache
+	var cached models.ModelForecastCache
+	if err := database.DB.Where("ticker = ? AND period_month = ?", ticker, periodMonth).First(&cached).Error; err == nil {
+		if time.Now().Before(cached.ExpiresAt) && cached.ForecastJSON != "" {
+			var intActual, intForecast, intCIUpper, intCILower []int
+			_ = json.Unmarshal([]byte(cached.HistoricalJSON), &intActual)
+			_ = json.Unmarshal([]byte(cached.ForecastJSON), &intForecast)
+			_ = json.Unmarshal([]byte(cached.CIUpperJSON), &intCIUpper)
+			_ = json.Unmarshal([]byte(cached.CILowerJSON), &intCILower)
+
+			return c.JSON(fiber.Map{
+				"ticker":      cached.Ticker,
+				"model":       cached.ModelName,
+				"horizonDays": cached.HorizonDays,
+				"signal":      cached.Signal,
+				"actual":      intActual,
+				"forecast":    intForecast,
+				"ciUpper":     intCIUpper,
+				"ciLower":     intCILower,
+				"cached":      true,
+				"periodMonth": cached.PeriodMonth,
+			})
+		}
+	}
+
+	// 2. Cache Miss or Expired: Compute from Model
 	price := 10250.0
 	signal := "BUY"
+	confidence := 86.0
 	var stock models.Stock
 	if err := database.DB.Where("ticker = ?", ticker).First(&stock).Error; err == nil && stock.Price > 0 {
 		price = stock.Price
 		signal = stock.Signal
+		if stock.ConfidenceLevel > 0 {
+			confidence = stock.ConfidenceLevel
+		}
 	}
 
 	if services.GlobalGenesisManager != nil {
 		forecast := services.GlobalGenesisManager.GenerateDynamicForecast(ticker, price, signal)
-		
+
 		intActual := make([]int, len(forecast.HistoricalPoints))
 		for i, p := range forecast.HistoricalPoints {
 			intActual[i] = int(p)
@@ -630,6 +662,32 @@ func GetForecast(c *fiber.Ctx) error {
 			intCILower[i] = int(p)
 		}
 
+		histB, _ := json.Marshal(intActual)
+		foreB, _ := json.Marshal(intForecast)
+		upperB, _ := json.Marshal(intCIUpper)
+		lowerB, _ := json.Marshal(intCILower)
+
+		// Persist into DB with 30-day (1 month) expiry
+		newCache := models.ModelForecastCache{
+			Ticker:         ticker,
+			PeriodMonth:    periodMonth,
+			ModelName:      forecast.ModelName,
+			HorizonDays:    forecast.HorizonDays,
+			Signal:         forecast.Signal,
+			TargetPrice:    forecast.TargetPrice,
+			StopLossPrice:  forecast.StopLossPrice,
+			PredReturnPct:  forecast.PredReturnPct,
+			RankScore:      forecast.RankScore,
+			Confidence:     confidence,
+			HistoricalJSON: string(histB),
+			ForecastJSON:   string(foreB),
+			CIUpperJSON:    string(upperB),
+			CILowerJSON:    string(lowerB),
+			CachedAt:       time.Now(),
+			ExpiresAt:      time.Now().AddDate(0, 1, 0),
+		}
+		database.DB.Save(&newCache)
+
 		return c.JSON(fiber.Map{
 			"ticker":      ticker,
 			"model":       forecast.ModelName,
@@ -639,6 +697,8 @@ func GetForecast(c *fiber.Ctx) error {
 			"forecast":    intForecast,
 			"ciUpper":     intCIUpper,
 			"ciLower":     intCILower,
+			"cached":      false,
+			"periodMonth": periodMonth,
 		})
 	}
 
@@ -651,10 +711,36 @@ func GetForecast(c *fiber.Ctx) error {
 	})
 }
 
-// GetTarget returns dynamic model-driven price target and recommendation
+// GetTarget returns dynamic model-driven price target and recommendation (cached in DB monthly)
 func GetTarget(c *fiber.Ctx) error {
 	ticker := strings.ToUpper(c.Params("ticker"))
-	
+	periodMonth := time.Now().Format("2006-01")
+
+	// 1. Check DB Cache
+	var cached models.ModelForecastCache
+	if err := database.DB.Where("ticker = ? AND period_month = ?", ticker, periodMonth).First(&cached).Error; err == nil {
+		if time.Now().Before(cached.ExpiresAt) && cached.TargetPrice > 0 {
+			rec := "BUY"
+			if cached.Signal == "BEARISH" {
+				rec = "SELL"
+			} else if cached.Signal == "NETRAL" {
+				rec = "HOLD"
+			}
+			return c.JSON(fiber.Map{
+				"ticker":      cached.Ticker,
+				"model":       cached.ModelName,
+				"targetPrice": fmt.Sprintf("Rp %s", formatIDR(int(cached.TargetPrice))),
+				"rec":         rec,
+				"upside":      fmt.Sprintf("%+.1f%% Potensi (%d-Hari)", cached.PredReturnPct, cached.HorizonDays),
+				"sliderPct":   int(cached.Confidence),
+				"stopLoss":    fmt.Sprintf("Rp %s", formatIDR(int(cached.StopLossPrice))),
+				"riskReward":  "1 : 2.1",
+				"confidence":  fmt.Sprintf("%.0f%%", cached.Confidence),
+				"cached":      true,
+			})
+		}
+	}
+
 	price := 10250.0
 	signal := "BUY"
 	confidence := 86.0
@@ -669,7 +755,7 @@ func GetTarget(c *fiber.Ctx) error {
 
 	if services.GlobalGenesisManager != nil {
 		forecast := services.GlobalGenesisManager.GenerateDynamicForecast(ticker, price, signal)
-		
+
 		rec := "BUY"
 		if forecast.Signal == "BEARISH" {
 			rec = "SELL"
@@ -687,6 +773,7 @@ func GetTarget(c *fiber.Ctx) error {
 			"stopLoss":    fmt.Sprintf("Rp %s", formatIDR(int(forecast.StopLossPrice))),
 			"riskReward":  forecast.RiskRewardRatio,
 			"confidence":  fmt.Sprintf("%.0f%%", confidence),
+			"cached":      false,
 		})
 	}
 

@@ -21,7 +21,14 @@ import './styles/globals.css'
 })()
 
 const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
+  defaultOptions: {
+    queries: {
+      retry: 1,
+      refetchOnWindowFocus: false,
+      staleTime: 1000 * 60 * 60 * 24, // 24 Jam cache segar
+      gcTime: 1000 * 60 * 60 * 24 * 7, // 7 Hari garbage collection
+    },
+  },
 })
 
 ReactDOM.createRoot(document.getElementById('root')!).render(

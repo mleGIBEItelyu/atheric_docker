@@ -169,3 +169,25 @@ type DeviceSession struct {
 	CreatedAt         time.Time `json:"createdAt"`
 	UpdatedAt         time.Time `json:"updatedAt"`
 }
+
+// ModelForecastCache stores monthly precomputed forecast predictions from Genesis AI in DB
+type ModelForecastCache struct {
+	ID             uint      `gorm:"primaryKey" json:"id"`
+	Ticker         string    `gorm:"uniqueIndex:idx_ticker_period;not null" json:"ticker"`
+	PeriodMonth    string    `gorm:"uniqueIndex:idx_ticker_period;not null" json:"periodMonth"` // Format: YYYY-MM (e.g. 2025-07)
+	ModelName      string    `json:"modelName"`
+	HorizonDays    int       `json:"horizonDays"`
+	Signal         string    `json:"signal"`
+	TargetPrice    float64   `json:"targetPrice"`
+	StopLossPrice  float64   `json:"stopLossPrice"`
+	PredReturnPct  float64   `json:"predReturnPct"`
+	RankScore      float64   `json:"rankScore"`
+	Confidence     float64   `json:"confidence"`
+	HistoricalJSON string    `gorm:"type:text" json:"historicalJson"`
+	ForecastJSON   string    `gorm:"type:text" json:"forecastJson"`
+	CIUpperJSON    string    `gorm:"type:text" json:"ciUpperJson"`
+	CILowerJSON    string    `gorm:"type:text" json:"ciLowerJson"`
+	CachedAt       time.Time `json:"cachedAt"`
+	ExpiresAt      time.Time `json:"expiresAt"`
+}
+
