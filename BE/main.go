@@ -258,6 +258,7 @@ func main() {
 	admin.Put("/users/:id", handlers.UpdateUserDetailsByAdmin)
 	admin.Put("/users/:id/role", handlers.UpdateUserRoleByAdmin)
 	admin.Put("/users/:id/status", handlers.ToggleUserStatusByAdmin)
+	admin.Put("/users/:id/verify", handlers.ToggleUserVerifyByAdmin)
 	admin.Delete("/users/:id", handlers.DeleteUserByAdmin)
 	admin.Get("/traffic", handlers.GetTrafficStatsHTTP)
 	admin.Get("/activity-logs", handlers.GetActivityLogsByAdmin)

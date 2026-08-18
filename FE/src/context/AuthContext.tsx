@@ -18,7 +18,7 @@ interface AuthContextType {
   isAdmin: boolean
   isLoginModalOpen: boolean
   setIsLoginModalOpen: (open: boolean) => void
-  login: (username: string, pass: string) => Promise<{ success: boolean; error?: string }>
+  login: (username: string, pass: string) => Promise<{ success: boolean; error?: string; needsVerification?: boolean; email?: string; devCode?: string }>
   register: (username: string, email: string, pass: string) => Promise<{ success: boolean; error?: string; needsVerification?: boolean; email?: string; devCode?: string }>
   verifyCode: (email: string, code: string) => Promise<{ success: boolean; error?: string }>
   resendCode: (email: string) => Promise<{ success: boolean; error?: string }>
@@ -66,6 +66,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   async function login(username: string, pass: string) {
     try {
       const res = await loginApi(username, pass)
+      if (res.needsVerification || res.needsDeviceVerification) {
+        return { success: true, needsVerification: true, email: res.email, devCode: res.devCode }
+      }
       if (res.token && res.user) {
         setToken(res.token)
         setUser(res.user)

@@ -118,7 +118,7 @@ export async function adminGetUsersApi() {
   return res.json()
 }
 
-export async function adminCreateUserApi(data: { username: string; email: string; password: string; role: string }) {
+export async function adminCreateUserApi(data: { username: string; email: string; password?: string; role?: string }) {
   const res = await fetch(`${BASE_URL}/api/admin/users`, {
     method: 'POST',
     headers: getAuthHeaders(),
@@ -130,8 +130,8 @@ export async function adminCreateUserApi(data: { username: string; email: string
 }
 
 export async function adminUpdateUserApi(
-  id: number,
-  data: { username?: string; email?: string; role?: string; isActive?: boolean; password?: string }
+  id: number | string,
+  data: { username?: string; email?: string; role?: string; isActive?: boolean; isVerified?: boolean; password?: string }
 ) {
   const res = await fetch(`${BASE_URL}/api/admin/users/${id}`, {
     method: 'PUT',
@@ -143,7 +143,7 @@ export async function adminUpdateUserApi(
   return json
 }
 
-export async function adminUpdateRoleApi(id: number, role: string) {
+export async function adminUpdateRoleApi(id: number | string, role: string) {
   const res = await fetch(`${BASE_URL}/api/admin/users/${id}/role`, {
     method: 'PUT',
     headers: getAuthHeaders(),
@@ -154,7 +154,7 @@ export async function adminUpdateRoleApi(id: number, role: string) {
   return json
 }
 
-export async function adminToggleStatusApi(id: number) {
+export async function adminToggleStatusApi(id: number | string) {
   const res = await fetch(`${BASE_URL}/api/admin/users/${id}/status`, {
     method: 'PUT',
     headers: getAuthHeaders(),
@@ -164,7 +164,17 @@ export async function adminToggleStatusApi(id: number) {
   return json
 }
 
-export async function adminDeleteUserApi(id: number) {
+export async function adminToggleVerifyApi(id: number | string) {
+  const res = await fetch(`${BASE_URL}/api/admin/users/${id}/verify`, {
+    method: 'PUT',
+    headers: getAuthHeaders(),
+  })
+  const json = await res.json()
+  if (!res.ok) throw new Error(json.error || 'Gagal update verifikasi')
+  return json
+}
+
+export async function adminDeleteUserApi(id: number | string) {
   const res = await fetch(`${BASE_URL}/api/admin/users/${id}`, {
     method: 'DELETE',
     headers: getAuthHeaders(),
@@ -184,7 +194,7 @@ export async function adminGetActivityLogsApi() {
     return Array.isArray(json) ? json : []
   } catch (err: any) {
     console.warn('Failed to fetch activity logs:', err)
-    throw new Error(err.message || 'Gagal mengambil log aktivitas')
+    return []
   }
 }
 

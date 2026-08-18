@@ -41,8 +41,16 @@ export function LoginPage() {
     if (!clean || !password.trim()) { setError("Email/Username dan Password wajib diisi."); return }
     setLoading(true)
     const res = await login(clean, password.trim())
-    if (!res.success) setError(res.error || "Login gagal.")
     setLoading(false)
+    if (res.success && res.needsVerification) {
+      setOtpEmail(res.email!)
+      setDevCode(res.devCode ?? null)
+      setCountdown(60)
+      setOtpDigits(["", "", "", "", "", ""])
+      setView("otp")
+    } else if (!res.success) {
+      setError(res.error || "Login gagal.")
+    }
   }
 
   async function handleRegister(e: React.FormEvent) {

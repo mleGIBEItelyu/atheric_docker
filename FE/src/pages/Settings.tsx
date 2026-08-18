@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
 import { Select } from '@/components/common/Select'
@@ -673,12 +674,13 @@ export function Settings() {
       </div>
 
       {/* Delete Account Confirmation Modal */}
-      {showDeleteModal && (
+      {showDeleteModal && createPortal(
         <div
           onClick={() => setShowDeleteModal(false)}
           style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)',
+            position: 'fixed', inset: 0, width: '100vw', height: '100vh', zIndex: 99999,
+            background: 'rgba(3, 7, 18, 0.78)', backdropFilter: 'blur(12px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '20px',
             animation: 'toastSlideIn 0.2s ease both',
@@ -687,22 +689,22 @@ export function Settings() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: 'var(--panel)',
-              border: '1px solid rgba(240, 86, 75, 0.4)',
-              borderRadius: 'var(--radius)',
-              boxShadow: '0 32px 80px rgba(0,0,0,0.9)',
+              background: 'linear-gradient(160deg, rgba(30, 20, 25, 0.96), rgba(16, 10, 14, 0.98))',
+              border: '1px solid rgba(240, 86, 75, 0.3)',
+              borderRadius: '18px',
+              boxShadow: '0 25px 60px -10px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(240, 86, 75, 0.15), inset 0 1px 1px rgba(255, 255, 255, 0.15)',
               width: '100%', maxWidth: '440px',
-              padding: '24px',
+              padding: '28px',
               display: 'flex', flexDirection: 'column', gap: '16px',
             }}
           >
             {/* Header Icon */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{
-                width: '40px', height: '40px', borderRadius: '10px',
-                background: 'rgba(240, 86, 75, 0.12)', border: '1px solid rgba(240, 86, 75, 0.3)',
+                width: '40px', height: '40px', borderRadius: '12px',
+                background: 'rgba(240, 86, 75, 0.18)', border: '1px solid rgba(240, 86, 75, 0.35)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'var(--red)', flexShrink: 0,
+                color: '#f87171', flexShrink: 0,
               }}>
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
@@ -711,22 +713,22 @@ export function Settings() {
                 </svg>
               </div>
               <div>
-                <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)' }}>Hapus Akun Permanen</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '2px' }}>Konfirmasi penghapusan akun {user?.username}</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#f87171' }}>Hapus Akun Permanen</div>
+                <div style={{ fontSize: '11px', color: 'rgba(248, 113, 113, 0.7)', marginTop: '2px', fontWeight: 600 }}>TINDAKAN PERMANEN</div>
               </div>
             </div>
 
             {/* Warning Message */}
             <div style={{
-              background: 'rgba(240, 86, 75, 0.08)',
-              border: '1px solid rgba(240, 86, 75, 0.2)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '12px 14px',
-              fontSize: '12.5px',
-              color: 'var(--text-dim)',
+              background: 'rgba(20, 10, 14, 0.6)',
+              border: '1px solid rgba(240, 86, 75, 0.15)',
+              borderRadius: '12px',
+              padding: '14px',
+              fontSize: '13px',
+              color: 'rgba(255, 255, 255, 0.8)',
               lineHeight: 1.6,
             }}>
-              Apakah Anda yakin ingin menghapus akun <b>{user?.username}</b>? Tindakan ini <b>tidak dapat dibatalkan</b>. Seluruh preferensi AI, sesi perangkat, dan data Anda akan dihapus permanen.
+              Apakah Anda yakin ingin menghapus akun <b style={{ color: '#fff' }}>{user?.username}</b>? Tindakan ini <b>tidak dapat dibatalkan</b>. Seluruh preferensi AI, sesi perangkat, dan data Anda akan dihapus permanen.
             </div>
 
             {/* Modal Buttons */}
@@ -734,8 +736,8 @@ export function Settings() {
               <button
                 onClick={() => setShowDeleteModal(false)}
                 style={{
-                  padding: '10px 18px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+                  padding: '10px 18px', borderRadius: '10px', cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
                   color: 'var(--text)', fontSize: '13px', fontWeight: 600,
                 }}
               >
@@ -744,26 +746,28 @@ export function Settings() {
               <button
                 onClick={confirmDeleteAccount}
                 style={{
-                  padding: '10px 18px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                  background: 'var(--red)', border: 'none',
+                  padding: '10px 20px', borderRadius: '10px', cursor: 'pointer',
+                  background: 'linear-gradient(135deg, #ef4444 0%, #b91c1c 100%)', border: 'none',
                   color: '#fff', fontSize: '13px', fontWeight: 700,
-                  boxShadow: '0 4px 12px rgba(240, 86, 75, 0.3)',
+                  boxShadow: '0 4px 14px rgba(239, 68, 68, 0.4)',
                 }}
               >
                 Ya, Hapus Akun Saya
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Logout Confirmation Modal */}
-      {showLogoutModal && (
+      {showLogoutModal && createPortal(
         <div
           onClick={() => setShowLogoutModal(false)}
           style={{
-            position: 'fixed', inset: 0, zIndex: 9999,
-            background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)',
+            position: 'fixed', inset: 0, width: '100vw', height: '100vh', zIndex: 99999,
+            background: 'rgba(3, 7, 18, 0.78)', backdropFilter: 'blur(12px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(12px) saturate(180%)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '20px',
             animation: 'toastSlideIn 0.2s ease both',
@@ -772,41 +776,41 @@ export function Settings() {
           <div
             onClick={e => e.stopPropagation()}
             style={{
-              background: 'var(--panel)',
-              border: '1px solid var(--border-strong)',
-              borderRadius: 'var(--radius)',
-              boxShadow: '0 32px 80px rgba(0,0,0,0.9)',
+              background: 'linear-gradient(160deg, rgba(22, 30, 49, 0.96), rgba(11, 16, 28, 0.98))',
+              border: '1px solid rgba(255, 255, 255, 0.12)',
+              borderRadius: '18px',
+              boxShadow: '0 25px 60px -10px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 255, 255, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.2)',
               width: '100%', maxWidth: '420px',
-              padding: '24px',
+              padding: '28px',
               display: 'flex', flexDirection: 'column', gap: '16px',
             }}
           >
             {/* Header Icon */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <div style={{
-                width: '40px', height: '40px', borderRadius: '10px',
-                background: 'var(--blue-soft)', border: '1px solid rgba(79, 125, 255, 0.3)',
+                width: '40px', height: '40px', borderRadius: '12px',
+                background: 'rgba(59, 130, 246, 0.15)', border: '1px solid rgba(59, 130, 246, 0.3)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: 'var(--blue-bright)', flexShrink: 0,
+                color: '#60a5fa', flexShrink: 0,
               }}>
                 <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.2">
                   <path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
               </div>
               <div>
-                <div style={{ fontSize: '15px', fontWeight: 800, color: 'var(--text)' }}>Konfirmasi Keluar</div>
-                <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '2px' }}>Sesi akun {user?.username}</div>
+                <div style={{ fontSize: '16px', fontWeight: 800, color: '#fff' }}>Konfirmasi Keluar</div>
+                <div style={{ fontSize: '11px', color: 'var(--text-dim)', marginTop: '2px', fontWeight: 600 }}>SESI AKUN {user?.username}</div>
               </div>
             </div>
 
             {/* Message */}
             <div style={{
-              background: 'var(--bg-2)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)',
-              padding: '12px 14px',
-              fontSize: '12.5px',
-              color: 'var(--text-dim)',
+              background: 'rgba(10, 15, 28, 0.6)',
+              border: '1px solid rgba(255, 255, 255, 0.06)',
+              borderRadius: '12px',
+              padding: '14px',
+              fontSize: '13px',
+              color: 'rgba(255, 255, 255, 0.75)',
               lineHeight: 1.6,
             }}>
               Apakah Anda yakin ingin keluar dari terminal Atheric AI di perangkat ini? Anda perlu memasukkan kredensial kembali untuk masuk.
@@ -817,8 +821,8 @@ export function Settings() {
               <button
                 onClick={() => setShowLogoutModal(false)}
                 style={{
-                  padding: '10px 18px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+                  padding: '10px 18px', borderRadius: '10px', cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)',
                   color: 'var(--text)', fontSize: '13px', fontWeight: 600,
                 }}
               >
@@ -827,17 +831,18 @@ export function Settings() {
               <button
                 onClick={confirmLogoutAccount}
                 style={{
-                  padding: '10px 18px', borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                  background: 'var(--blue)', border: 'none',
+                  padding: '10px 20px', borderRadius: '10px', cursor: 'pointer',
+                  background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)', border: 'none',
                   color: '#fff', fontSize: '13px', fontWeight: 700,
-                  boxShadow: '0 4px 12px rgba(59, 110, 246, 0.3)',
+                  boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)',
                 }}
               >
                 Ya, Keluar Akun
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )

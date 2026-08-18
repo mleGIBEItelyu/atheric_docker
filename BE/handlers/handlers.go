@@ -106,6 +106,34 @@ func Login(c *fiber.Ctx) error {
 		})
 	}
 
+	// Check if this device/browser is already known or NEW
+	clientIP := services.GetRealClientIP(c)
+	userAgent := c.Get("User-Agent")
+	geo := services.ResolveIPLocation(clientIP)
+	deviceName, browserName := services.ParseUserAgent(userAgent)
+
+	var existingSession models.DeviceSession
+	isKnownDevice := database.DB.Where("user_id = ? AND (ip = ? OR (browser = ? AND device = ?))", user.ID, clientIP, browserName, deviceName).First(&existingSession).Error == nil
+
+	// If logging in from a NEW device for the first time, require OTP verification
+	if !isKnownDevice {
+		otpCode := services.GenerateOTP()
+		expiresAt := time.Now().Add(15 * time.Minute)
+		user.VerificationCode = otpCode
+		user.CodeExpiresAt = &expiresAt
+		database.DB.Save(&user)
+
+		_ = services.SendVerificationEmail(user.Email, otpCode)
+		services.RecordActivity(c, user.ID, user.Username, user.Role, "LOGIN_NEW_DEVICE_OTP", fmt.Sprintf("Permintaan OTP login perangkat baru dari %s (%s) IP %s", deviceName, browserName, clientIP))
+
+		return c.JSON(fiber.Map{
+			"needsVerification":       true,
+			"needsDeviceVerification": true,
+			"email":                   user.Email,
+			"message":                 "Terdeteksi login pertama kali dari perangkat baru. Kode verifikasi 6 digit telah dikirim ke email Anda.",
+		})
+	}
+
 	// Generate JWT Token (valid for 24 Hours)
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"user_id":  user.ID,
@@ -120,12 +148,6 @@ func Login(c *fiber.Ctx) error {
 	}
 
 	services.RecordActivity(c, user.ID, user.Username, user.Role, "LOGIN", "Login berhasil ke sistem platform")
-
-	// Trigger real-time New Device Security Notification with Geolocation (Kota, Provinsi, Negara)
-	clientIP := services.GetRealClientIP(c)
-	userAgent := c.Get("User-Agent")
-	geo := services.ResolveIPLocation(clientIP)
-	deviceName, browserName := services.ParseUserAgent(userAgent)
 
 	// Mark previous sessions as not current
 	database.DB.Model(&models.DeviceSession{}).Where("user_id = ?", user.ID).Update("is_current", false)
@@ -153,10 +175,10 @@ func Login(c *fiber.Ctx) error {
 
 	newDevNotif := models.Notification{
 		UserID:    user.ID,
-		Title:     "Keamanan Akun: Sesi Login Perangkat Baru",
-		Body:      fmt.Sprintf("Terdeteksi sesi login baru dari %s (%s) di %s (IP: %s). Kebijakan proteksi cooldown 1 minggu telah aktif.", deviceName, browserName, geo.Formatted, clientIP),
+		Title:     "Keamanan Akun: Sesi Login Perangkat",
+		Body:      fmt.Sprintf("Terdeteksi sesi login dari %s (%s) di %s (IP: %s).", deviceName, browserName, geo.Formatted, clientIP),
 		Category:  "system",
-		Impact:    "High",
+		Impact:    "Medium",
 		Read:      false,
 		Time:      "Baru saja",
 		CreatedAt: time.Now(),
@@ -214,7 +236,32 @@ func Register(c *fiber.Ctx) error {
 	// Check if username or email already exists
 	var existing models.User
 	if err := database.DB.Where("username = ? OR email = ?", req.Username, req.Email).First(&existing).Error; err == nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Username atau Email sudah terdaftar dalam sistem."})
+		// Jika akun lama BELUM diverifikasi, perbarui data akun dan kirim OTP baru (user tidak terblokir)
+		if !existing.IsVerified {
+			passHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+			if err != nil {
+				return c.Status(500).JSON(fiber.Map{"error": "Gagal memproses password"})
+			}
+			otpCode := services.GenerateOTP()
+			expiresAt := time.Now().Add(15 * time.Minute)
+
+			existing.Username = req.Username
+			existing.Email = req.Email
+			existing.Password = string(passHash)
+			existing.VerificationCode = otpCode
+			existing.CodeExpiresAt = &expiresAt
+			existing.IsActive = true
+			database.DB.Save(&existing)
+
+			_ = services.SendVerificationEmail(req.Email, otpCode)
+			services.RecordActivity(c, existing.ID, existing.Username, "USER", "REGISTER_RETRY", "Pendaftaran ulang akun belum verifikasi via email "+req.Email)
+
+			return c.JSON(fiber.Map{
+				"message": "Pendaftaran diperbarui! Kode verifikasi 6 digit baru telah dikirimkan ke email Anda.",
+				"email":   req.Email,
+			})
+		}
+		return c.Status(400).JSON(fiber.Map{"error": "Username atau Email sudah terdaftar dan terverifikasi. Silakan masuk."})
 	}
 
 	passHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -251,7 +298,7 @@ func Register(c *fiber.Ctx) error {
 	})
 }
 
-// VerifyEmailCode verifies 6-digit OTP code and activates user
+// VerifyEmailCode verifies 6-digit OTP code and activates user / new device
 func VerifyEmailCode(c *fiber.Ctx) error {
 	type VerifyReq struct {
 		Email string `json:"email"`
@@ -275,11 +322,7 @@ func VerifyEmailCode(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "Pengguna dengan email ini tidak ditemukan."})
 	}
 
-	if user.IsVerified {
-		return c.Status(400).JSON(fiber.Map{"error": "Akun ini sudah terverifikasi sebelumnya. Silakan login."})
-	}
-
-	if user.VerificationCode != req.Code {
+	if user.VerificationCode == "" || user.VerificationCode != req.Code {
 		return c.Status(400).JSON(fiber.Map{"error": "Kode verifikasi salah. Silakan periksa kembali email Anda."})
 	}
 
@@ -287,10 +330,41 @@ func VerifyEmailCode(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Kode verifikasi telah kadaluarsa. Silakan kirim ulang kode baru."})
 	}
 
-	// Update verification status
+	// Update verification status & clear code
 	user.IsVerified = true
 	user.VerificationCode = ""
+	user.CodeExpiresAt = nil
 	database.DB.Save(&user)
+
+	// Record/update device session
+	clientIP := services.GetRealClientIP(c)
+	userAgent := c.Get("User-Agent")
+	geo := services.ResolveIPLocation(clientIP)
+	deviceName, browserName := services.ParseUserAgent(userAgent)
+
+	database.DB.Model(&models.DeviceSession{}).Where("user_id = ?", user.ID).Update("is_current", false)
+
+	var currentSession models.DeviceSession
+	if err := database.DB.Where("user_id = ? AND ip = ? AND browser = ?", user.ID, clientIP, browserName).First(&currentSession).Error; err != nil {
+		newSession := models.DeviceSession{
+			UserID:            user.ID,
+			Device:            deviceName,
+			Browser:           browserName,
+			IP:                clientIP,
+			Location:          geo.Formatted,
+			FirstLoginDaysAgo: 0,
+			LastActive:        "Aktif Sekarang",
+			IsCurrent:         true,
+		}
+		database.DB.Create(&newSession)
+	} else {
+		currentSession.IsCurrent = true
+		currentSession.LastActive = "Aktif Sekarang"
+		currentSession.UpdatedAt = time.Now()
+		database.DB.Save(&currentSession)
+	}
+
+	services.RecordActivity(c, user.ID, user.Username, user.Role, "VERIFY_DEVICE_SUCCESS", fmt.Sprintf("Verifikasi OTP login perangkat berhasil dari %s (%s) IP %s", deviceName, browserName, clientIP))
 
 	// Issue JWT token
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
@@ -306,7 +380,7 @@ func VerifyEmailCode(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"message": "Verifikasi email berhasil! Selamat datang di Atheric AI.",
+		"message": "Verifikasi berhasil! Selamat datang di Atheric AI.",
 		"token":   tokenString,
 		"user": fiber.Map{
 			"id":         user.ID,
@@ -1357,7 +1431,37 @@ func DeleteUserByAdmin(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"message": "Pengguna berhasil dihapus"})
 }
 
-// UpdateUserDetailsByAdmin updates username, email, role, and active status for a user
+// ToggleUserVerifyByAdmin toggles email verification status directly for a user
+func ToggleUserVerifyByAdmin(c *fiber.Ctx) error {
+	idStr := c.Params("id")
+	targetID, err := strconv.ParseUint(idStr, 10, 32)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "ID pengguna tidak valid"})
+	}
+
+	var user models.User
+	if err := database.DB.First(&user, uint(targetID)).Error; err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "Pengguna tidak ditemukan"})
+	}
+
+	user.IsVerified = !user.IsVerified
+	database.DB.Save(&user)
+
+	statusStr := "Belum Terverifikasi"
+	if user.IsVerified {
+		statusStr = "Terverifikasi"
+	}
+	adminID, adminName, adminRole := getAuthUser(c)
+	services.RecordActivity(c, adminID, adminName, adminRole, "TOGGLE_VERIFY", "Admin '"+adminName+"' mengubah status verifikasi user #"+idStr+" ("+user.Username+") menjadi "+statusStr)
+
+	return c.JSON(fiber.Map{
+		"message":    "Status verifikasi pengguna berhasil diperbarui",
+		"isVerified": user.IsVerified,
+		"user":       user,
+	})
+}
+
+// UpdateUserDetailsByAdmin updates username, email, role, active status, and verification status for a user
 func UpdateUserDetailsByAdmin(c *fiber.Ctx) error {
 	idStr := c.Params("id")
 	targetID, err := strconv.ParseUint(idStr, 10, 32)
@@ -1366,11 +1470,12 @@ func UpdateUserDetailsByAdmin(c *fiber.Ctx) error {
 	}
 
 	type EditReq struct {
-		Username string `json:"username"`
-		Email    string `json:"email"`
-		Role     string `json:"role"`
-		IsActive bool   `json:"isActive"`
-		Password string `json:"password,omitempty"`
+		Username   string `json:"username"`
+		Email      string `json:"email"`
+		Role       string `json:"role"`
+		IsActive   bool   `json:"isActive"`
+		IsVerified bool   `json:"isVerified"`
+		Password   string `json:"password,omitempty"`
 	}
 
 	var req EditReq
@@ -1400,6 +1505,7 @@ func UpdateUserDetailsByAdmin(c *fiber.Ctx) error {
 		user.Role = req.Role
 	}
 	user.IsActive = req.IsActive
+	user.IsVerified = req.IsVerified
 
 	if strings.TrimSpace(req.Password) != "" {
 		passHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react"
+import { createPortal } from "react-dom"
 import { useAuth } from "@/context/AuthContext"
-import { adminGetUsersApi, adminUpdateUserApi, adminUpdateRoleApi, adminToggleStatusApi, adminDeleteUserApi, adminCreateUserApi, adminGetActivityLogsApi } from "@/services/api"
+import { adminGetUsersApi, adminUpdateUserApi, adminUpdateRoleApi, adminToggleStatusApi, adminToggleVerifyApi, adminDeleteUserApi, adminCreateUserApi, adminGetActivityLogsApi } from "@/services/api"
 
 interface AdminActivityLog {
   id: number
@@ -144,31 +145,187 @@ function useWsTraffic() {
 }
 
 /* ------------------------------------------------------------------ */
-/* Mini SVG line chart                                                  */
+/* Interactive React-Style Traffic Spline Area Chart                  */
 /* ------------------------------------------------------------------ */
-function SparkLine({ data, color = "#4f7dff" }: { data: number[]; color?: string }) {
+function ReactTrafficChart({ data }: { data: number[] }) {
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const validData = data.filter(n => typeof n === "number" && !isNaN(n) && isFinite(n))
-  if (validData.length < 2) return null
-  const W = 300, H = 70, pad = 4
-  const max = Math.max(...validData) || 1
-  const pts = validData.map((v, i) => {
-    const x = pad + (i / (validData.length - 1 || 1)) * (W - pad * 2)
-    const y = H - pad - ((v / max) * (H - pad * 2))
-    return `${x.toFixed(1)},${y.toFixed(1)}`
+
+  if (validData.length < 2) {
+    return (
+      <div style={{ height: 160, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: "13px" }}>
+        Menunggu stream data realtime...
+      </div>
+    )
+  }
+
+  const W = 800
+  const H = 160
+  const padLeft = 45
+  const padRight = 20
+  const padTop = 15
+  const padBottom = 28
+
+  const chartW = W - padLeft - padRight
+  const chartH = H - padTop - padBottom
+
+  const maxVal = Math.max(...validData, 5)
+  const yMax = Math.ceil(maxVal / 5) * 5
+
+  const points = validData.map((v, i) => {
+    const x = padLeft + (i / (validData.length - 1 || 1)) * chartW
+    const y = padTop + chartH - (v / yMax) * chartH
+    return { x, y, val: v, index: i }
   })
-  const polyline = pts.join(" ")
-  const area = `${pad.toFixed(1)},${(H - pad).toFixed(1)} ${polyline} ${(W - pad).toFixed(1)},${(H - pad).toFixed(1)}`
+
+  function getSplinePath(pts: { x: number; y: number }[]) {
+    if (pts.length === 0) return ""
+    let d = `M ${pts[0].x.toFixed(1)},${pts[0].y.toFixed(1)}`
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p0 = pts[i === 0 ? 0 : i - 1]
+      const p1 = pts[i]
+      const p2 = pts[i + 1]
+      const p3 = pts[i + 2 >= pts.length ? pts.length - 1 : i + 2]
+
+      const cp1x = p1.x + (p2.x - p0.x) / 6
+      const cp1y = p1.y + (p2.y - p0.y) / 6
+      const cp2x = p2.x - (p3.x - p1.x) / 6
+      const cp2y = p2.y - (p3.y - p1.y) / 6
+
+      d += ` C ${cp1x.toFixed(1)},${cp1y.toFixed(1)} ${cp2x.toFixed(1)},${cp2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)}`
+    }
+    return d
+  }
+
+  const linePath = getSplinePath(points)
+  const lastPoint = points[points.length - 1]
+  const firstPoint = points[0]
+  const areaPath = `${linePath} L ${lastPoint.x.toFixed(1)},${(padTop + chartH).toFixed(1)} L ${firstPoint.x.toFixed(1)},${(padTop + chartH).toFixed(1)} Z`
+
+  const gridLevels = [0, yMax * 0.33, yMax * 0.66, yMax]
+  const activePoint = hoverIndex !== null && points[hoverIndex] ? points[hoverIndex] : null
+
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: "70px" }} preserveAspectRatio="none">
-      <defs>
-        <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={color} stopOpacity="0.35" />
-          <stop offset="100%" stopColor={color} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      <polygon points={area} fill="url(#sg)" />
-      <polyline points={polyline} fill="none" stroke={color} strokeWidth="2" strokeLinejoin="round" />
-    </svg>
+    <div
+      style={{ position: "relative", width: "100%", userSelect: "none" }}
+      onMouseLeave={() => setHoverIndex(null)}
+    >
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ width: "100%", height: "180px", overflow: "visible", display: "block" }}
+        onMouseMove={e => {
+          const rect = e.currentTarget.getBoundingClientRect()
+          const svgX = ((e.clientX - rect.left) / rect.width) * W
+          let closestIdx = 0
+          let minDist = Infinity
+          points.forEach((p, idx) => {
+            const dist = Math.abs(p.x - svgX)
+            if (dist < minDist) {
+              minDist = dist
+              closestIdx = idx
+            }
+          })
+          setHoverIndex(closestIdx)
+        }}
+      >
+        <defs>
+          <linearGradient id="reactTrafficGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.14" />
+            <stop offset="60%" stopColor="#94a3b8" stopOpacity="0.03" />
+            <stop offset="100%" stopColor="#94a3b8" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* Horizontal gridlines and Y-axis labels */}
+        {gridLevels.map((lvl, idx) => {
+          const y = padTop + chartH - (lvl / yMax) * chartH
+          return (
+            <g key={idx}>
+              <line
+                x1={padLeft} y1={y} x2={W - padRight} y2={y}
+                stroke="rgba(255,255,255,0.06)" strokeDasharray={idx === 0 ? "none" : "3 3"} strokeWidth="1"
+              />
+              <text
+                x={padLeft - 8} y={y + 3.5}
+                fill="var(--text-dim)" fontSize="10" textAnchor="end" fontFamily="monospace"
+              >
+                {Math.round(lvl)}
+              </text>
+            </g>
+          )
+        })}
+
+        {/* X-axis labels */}
+        {[-60, -45, -30, -15, 0].map((sec, idx) => {
+          const x = padLeft + ((sec + 60) / 60) * chartW
+          return (
+            <text
+              key={idx}
+              x={x} y={H - 4}
+              fill="var(--text-dim)" fontSize="10" textAnchor={idx === 4 ? "end" : idx === 0 ? "start" : "middle"}
+              fontFamily="var(--font)"
+            >
+              {sec === 0 ? "Sekarang" : `${sec}s`}
+            </text>
+          )
+        })}
+
+        {/* Area fill */}
+        <path d={areaPath} fill="url(#reactTrafficGrad)" />
+
+        {/* Smooth line */}
+        <path d={linePath} fill="none" stroke="#60a5fa" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+
+        {/* Latest live point pulse */}
+        {lastPoint && (
+          <g>
+            <circle cx={lastPoint.x} cy={lastPoint.y} r="7" fill="rgba(96,165,250,0.25)">
+              <animate attributeName="r" values="4;8;4" dur="2s" repeatCount="indefinite" />
+              <animate attributeName="opacity" values="0.8;0.2;0.8" dur="2s" repeatCount="indefinite" />
+            </circle>
+            <circle cx={lastPoint.x} cy={lastPoint.y} r="3.5" fill="#60a5fa" stroke="#fff" strokeWidth="1.5" />
+          </g>
+        )}
+
+        {/* Active hover crosshair and point */}
+        {activePoint && (
+          <g>
+            <line
+              x1={activePoint.x} y1={padTop} x2={activePoint.x} y2={padTop + chartH}
+              stroke="rgba(255,255,255,0.2)" strokeDasharray="3 3" strokeWidth="1"
+            />
+            <circle cx={activePoint.x} cy={activePoint.y} r="5" fill="#60a5fa" stroke="#fff" strokeWidth="2" />
+          </g>
+        )}
+      </svg>
+
+      {/* Floating Tooltip */}
+      {activePoint && (
+        <div style={{
+          position: "absolute",
+          top: "10px",
+          left: `${(activePoint.x / W) * 100}%`,
+          transform: "translateX(-50%)",
+          background: "rgba(24, 28, 38, 0.95)",
+          border: "1px solid rgba(255,255,255,0.12)",
+          borderRadius: "8px",
+          padding: "6px 12px",
+          boxShadow: "0 8px 24px rgba(0,0,0,0.6)",
+          pointerEvents: "none",
+          zIndex: 10,
+          whiteSpace: "nowrap",
+          backdropFilter: "blur(8px)",
+        }}>
+          <div style={{ fontSize: "10.5px", color: "var(--text-dim)", marginBottom: "2px" }}>
+            {points.length - 1 - activePoint.index === 0 ? "Detik ini" : `${points.length - 1 - activePoint.index} detik lalu`}
+          </div>
+          <div style={{ fontSize: "13px", fontWeight: 800, color: "#60a5fa", display: "flex", alignItems: "center", gap: "6px" }}>
+            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#60a5fa", display: "inline-block" }} />
+            {activePoint.val} req / min
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -208,8 +365,6 @@ function TrafficTab({ stats, connected, history }: { stats: TrafficStats | null;
   const unique15m = stats?.uniqueUsers15Min ?? (activeConn > 0 ? 1 : 0)
   const peakReq = stats?.peakRequestsPerMin ?? req1m
   const blockedBots = stats?.blockedBots ?? 0
-  const avgLat = Math.round(stats?.avgLatencyMs ?? stats?.avgResponseMs ?? 0)
-  const errRate = stats?.errorRatePct ?? stats?.errorRate ?? 0
   const uptimeStr = stats?.uptimeSeconds ? formatUptime(stats.uptimeSeconds) : (stats?.uptime ?? "ONLINE")
 
   return (
@@ -227,41 +382,35 @@ function TrafficTab({ stats, connected, history }: { stats: TrafficStats | null;
           </span>
         </div>
         <div style={{ fontSize: "12px", color: "var(--text-dim)" }}>
-          Pengguna Unik 15 Min: <strong style={{ color: "var(--blue)" }}>{unique15m} IP</strong> | Uptime: <strong style={{ color: "var(--green)" }}>{uptimeStr}</strong>
+          Pengguna Unik 15 Min: <strong style={{ color: "#60a5fa" }}>{unique15m} IP</strong> | Uptime: <strong style={{ color: "#3ecf8e" }}>{uptimeStr}</strong>
         </div>
       </div>
 
-      {/* Exactly 4 Key Info Cards */}
+      {/* Key Info Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "14px", width: "100%" }}>
-        <StatCard label="Pengguna / Koneksi Aktif" value={stats ? activeConn : "-"} sub={unique15m > 0 ? `${unique15m} IP unik aktif (15m)` : "1 sesi terhubung"} accent="#4f7dff" />
+        <StatCard label="Pengguna / Koneksi Aktif" value={stats ? activeConn : "-"} sub={unique15m > 0 ? `${unique15m} IP unik aktif (15m)` : "1 sesi terhubung"} accent="#60a5fa" />
         <StatCard label="Total Request HTTP" value={stats ? totReq : "-"} sub={`${req5m} req dalam 5 menit terakhir`} />
         <StatCard label="Kecepatan Trafik" value={stats ? `${req1m} req/m` : "-"} sub={`Peak: ${peakReq} req/m (${req15m} req/15m)`} />
         <StatCard label="Bot Dicegah" value={stats ? blockedBots : "-"} sub="Script & spam login/register diblokir" accent={blockedBots > 0 ? "#f0564b" : "#3ecf8e"} />
       </div>
 
       {/* Request history chart */}
-      <div style={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "20px" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px", flexWrap: "wrap", gap: "8px" }}>
+      <div style={{ background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius)", padding: "22px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "16px", flexWrap: "wrap", gap: "8px" }}>
           <div>
-            <div style={{ fontSize: "13.5px", fontWeight: 700 }}>Riwayat Request & Trafik Pengguna (60 Detik Terakhir)</div>
+            <div style={{ fontSize: "14px", fontWeight: 800, color: "var(--text)" }}>Riwayat Request &amp; Trafik Pengguna (60 Detik Terakhir)</div>
             <div style={{ fontSize: "12px", color: "var(--text-dim)", marginTop: "2px" }}>
               Stream statistik real-time interval 1 detik dari WebSocket Backend Go
             </div>
           </div>
-          <div style={{ display: "flex", gap: "12px", fontSize: "12px", color: "var(--text-dim)", background: "rgba(255,255,255,0.03)", padding: "6px 12px", borderRadius: "var(--radius-sm)", border: "1px solid var(--border)" }}>
-            <span>1 Min: <strong style={{ color: "var(--blue)" }}>{req1m} req</strong></span>
+          <div style={{ display: "flex", gap: "12px", fontSize: "12px", color: "var(--text-dim)", background: "rgba(255,255,255,0.03)", padding: "6px 12px", borderRadius: "8px", border: "1px solid var(--border)" }}>
+            <span>1 Min: <strong style={{ color: "#60a5fa" }}>{req1m} req</strong></span>
             <span>5 Min: <strong style={{ color: "var(--text)" }}>{req5m} req</strong></span>
             <span>15 Min: <strong style={{ color: "var(--text)" }}>{req15m} req</strong></span>
-            <span>Puncak: <strong style={{ color: "var(--green)" }}>{peakReq} req/m</strong></span>
+            <span>Puncak: <strong style={{ color: "#3ecf8e" }}>{peakReq} req/m</strong></span>
           </div>
         </div>
-        {history.length >= 2 ? (
-          <SparkLine data={history} />
-        ) : (
-          <div style={{ height: 70, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: "13px" }}>
-            Menunggu stream data realtime...
-          </div>
-        )}
+        <ReactTrafficChart data={history} />
       </div>
 
       <div style={{ display: "flex", gap: "16px", flexWrap: "wrap" }}>
@@ -282,8 +431,8 @@ function TrafficTab({ stats, connected, history }: { stats: TrafficStats | null;
                         <span style={{ color: "var(--text-dim)", fontFamily: "monospace" }}>{ep.path}</span>
                         <span style={{ fontWeight: 600 }}>{ep.count}</span>
                       </div>
-                      <div style={{ height: 4, background: "var(--border)", borderRadius: 2, overflow: "hidden" }}>
-                        <div style={{ height: "100%", width: `${pct}%`, background: "var(--blue)", borderRadius: 2, transition: "width .5s" }} />
+                      <div style={{ height: 4, background: "rgba(255,255,255,0.08)", borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{ height: "100%", width: `${pct}%`, background: "#3b82f6", borderRadius: 2, transition: "width .5s" }} />
                       </div>
                     </div>
                   )
@@ -338,7 +487,7 @@ function UsersTab() {
   const [roleModalUser, setRoleModalUser] = useState<AdminUser | null>(null)
   const [deleteModalUser, setDeleteModalUser] = useState<AdminUser | null>(null)
   const [editModalUser, setEditModalUser] = useState<AdminUser | null>(null)
-  const [editForm, setEditForm] = useState({ username: "", email: "", role: "USER", isActive: true, password: "" })
+  const [editForm, setEditForm] = useState({ username: "", email: "", role: "USER", isActive: true, isVerified: true, password: "" })
 
   const [submitting, setSubmitting] = useState(false)
 
@@ -349,6 +498,16 @@ function UsersTab() {
   }, [])
 
   useEffect(() => { load() }, [load])
+
+  // Quick 1-click verification bypass toggle
+  async function handleToggleVerify(u: AdminUser) {
+    try {
+      const res = await adminToggleVerifyApi(u.id)
+      setUsers(prev => prev.map(x => x.id === u.id ? { ...x, isVerified: res.isVerified } : x))
+    } catch (e: any) {
+      alert(e.message)
+    }
+  }
 
   // Handle Role Change
   async function confirmRoleChange() {
@@ -394,7 +553,14 @@ function UsersTab() {
     setSubmitting(true)
     try {
       const updated = await adminUpdateUserApi(editModalUser.id, editForm)
-      setUsers(u => u.map(x => x.id === editModalUser.id ? { ...x, username: updated.username || editForm.username, email: updated.email || editForm.email, role: updated.role || editForm.role, isActive: updated.isActive ?? editForm.isActive } : x))
+      setUsers(u => u.map(x => x.id === editModalUser.id ? {
+        ...x,
+        username: updated.username || editForm.username,
+        email: updated.email || editForm.email,
+        role: updated.role || editForm.role,
+        isActive: updated.isActive ?? editForm.isActive,
+        isVerified: updated.isVerified ?? editForm.isVerified
+      } : x))
       setEditModalUser(null)
     } catch (e: any) {
       alert(e.message)
@@ -426,20 +592,51 @@ function UsersTab() {
     u.email.toLowerCase().includes(search.toLowerCase())
   )
 
-  const inp: React.CSSProperties = {
-    padding: "10px 14px", borderRadius: "var(--radius-sm)", background: "var(--bg)",
-    border: "1px solid var(--border-strong)", color: "var(--text)", fontSize: "13px", outline: "none",
+  const customInp: React.CSSProperties = {
+    padding: "10px 14px",
+    borderRadius: "8px",
+    background: "#141414",
+    border: "1px solid rgba(255, 255, 255, 0.12)",
+    color: "#f3f4f6",
+    fontSize: "13px",
+    outline: "none",
+    width: "100%",
+    boxSizing: "border-box",
+    transition: "border-color 0.2s, box-shadow 0.2s",
+  }
+
+  const customSelect: React.CSSProperties = {
+    ...customInp,
+    appearance: "none",
+    WebkitAppearance: "none",
+    MozAppearance: "none",
+    backgroundImage: `url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ca3af' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e")`,
+    backgroundRepeat: "no-repeat",
+    backgroundPosition: "right 12px center",
+    backgroundSize: "14px",
+    paddingRight: "36px",
+    cursor: "pointer",
+  }
+
+  const labelStyle: React.CSSProperties = {
+    display: "block",
+    fontSize: "11px",
+    fontWeight: 700,
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: ".05em",
+    marginBottom: "6px",
   }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
       {/* Toolbar */}
       <div style={{ display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
-        <input style={{ ...inp, flex: "1", minWidth: "200px" }} placeholder="Cari username / email..."
+        <input style={{ ...customInp, flex: "1", minWidth: "200px" }} placeholder="Cari username / email..."
           value={search} onChange={e => setSearch(e.target.value)} />
-        <button onClick={load} style={{ ...inp, cursor: "pointer", whiteSpace: "nowrap" }}><RefreshIcon spinning={loading} /> Refresh</button>
+        <button onClick={load} style={{ ...customInp, width: "auto", cursor: "pointer", whiteSpace: "nowrap" }}><RefreshIcon spinning={loading} /> Refresh</button>
         <button onClick={() => setShowCreate(true)} style={{
-          ...inp, cursor: "pointer", background: "var(--blue)", color: "#fff",
+          ...customInp, width: "auto", cursor: "pointer", background: "var(--blue)", color: "#fff",
           border: "none", fontWeight: 700, whiteSpace: "nowrap",
         }}><PlusIcon /> Tambah User</button>
       </div>
@@ -452,6 +649,7 @@ function UsersTab() {
         WebkitOverflowScrolling: "touch",
         borderRadius: "var(--radius)",
         border: "1px solid var(--border)",
+        background: "var(--panel)",
         width: "100%",
         maxWidth: "100%",
         display: "block",
@@ -470,7 +668,7 @@ function UsersTab() {
             ) : filtered.length === 0 ? (
               <tr><td colSpan={8} style={{ padding: "32px", textAlign: "center", color: "var(--text-dim)" }}>Tidak ada user ditemukan.</td></tr>
             ) : filtered.map((u, idx) => (
-              <tr key={u.id} style={{ borderBottom: "1px solid var(--border)", background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)" }}>
+              <tr key={u.id} style={{ borderBottom: "1px solid var(--border)", background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)" }}>
                 <td style={{ padding: "12px 14px", color: "var(--blue)", fontWeight: 700, fontFamily: "monospace" }}>#{u.id}</td>
                 <td style={{ padding: "12px 14px", fontWeight: 600 }}>{u.username}</td>
                 <td style={{ padding: "12px 14px", color: "var(--text-dim)" }}>{u.email}</td>
@@ -482,7 +680,22 @@ function UsersTab() {
                   }}>{u.role}</span>
                 </td>
                 <td style={{ padding: "12px 14px" }}>
-                  {u.isVerified ? <CheckIcon /> : <CrossIcon />}
+                  <button
+                    type="button"
+                    onClick={() => handleToggleVerify(u)}
+                    title={u.isVerified ? "Klik untuk batalkan verifikasi" : "Klik untuk langsung verifikasi akun (Bypass OTP)"}
+                    style={{
+                      background: "none", border: "none", cursor: "pointer", padding: "4px 6px", borderRadius: "6px",
+                      display: "inline-flex", alignItems: "center", gap: "6px", transition: "background 0.15s ease",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.06)"}
+                    onMouseLeave={e => e.currentTarget.style.background = "none"}
+                  >
+                    {u.isVerified ? <CheckIcon /> : <CrossIcon />}
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: u.isVerified ? "#3ecf8e" : "var(--text-dim)" }}>
+                      {u.isVerified ? "Verif" : "Unverif"}
+                    </span>
+                  </button>
                 </td>
                 <td style={{ padding: "12px 14px" }}>
                   <span style={{
@@ -505,7 +718,7 @@ function UsersTab() {
                     {/* Edit Button */}
                     <button onClick={() => {
                       setEditModalUser(u)
-                      setEditForm({ username: u.username, email: u.email, role: u.role, isActive: u.isActive, password: "" })
+                      setEditForm({ username: u.username, email: u.email, role: u.role, isActive: u.isActive, isVerified: u.isVerified, password: "" })
                     }} style={{
                       padding: "5px 12px", borderRadius: "var(--radius-sm)", fontSize: "11px", fontWeight: 700,
                       background: "rgba(255,255,255,0.06)", color: "var(--text)", border: "1px solid var(--border-strong)", cursor: "pointer",
@@ -529,180 +742,345 @@ function UsersTab() {
       </div>
 
       {/* 1. Modal Konfirmasi Role */}
-      {roleModalUser && (
+      {roleModalUser && createPortal(
         <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)", zIndex: 9999,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: "24px",
+          position: "fixed", inset: 0, width: "100vw", height: "100vh", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)", zIndex: 99999,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
         }} onClick={e => e.target === e.currentTarget && setRoleModalUser(null)}>
           <div style={{
-            background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
-            padding: "28px", width: "100%", maxWidth: "420px", boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+            background: "#181818",
+            border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: "16px",
+            padding: "24px 28px", width: "100%", maxWidth: "460px",
+            boxShadow: "0 25px 60px -10px rgba(0, 0, 0, 0.8)",
+            animation: "modalFadeIn 0.2s ease-out",
           }}>
-            <div style={{ fontSize: "18px", fontWeight: 800, marginBottom: "12px" }}>Konfirmasi Perubahan Role</div>
-            <div style={{ fontSize: "13.5px", color: "var(--text-dim)", lineHeight: 1.5, marginBottom: "20px" }}>
-              Apakah Anda yakin ingin mengubah role akun <strong style={{ color: "var(--text)" }}>{roleModalUser.username}</strong> dari{" "}
-              <strong style={{ color: "var(--blue)" }}>{roleModalUser.role}</strong> menjadi{" "}
-              <strong style={{ color: roleModalUser.role === "ADMIN" ? "var(--text-dim)" : "var(--blue)" }}>
-                {roleModalUser.role === "ADMIN" ? "USER" : "ADMIN"}
-              </strong>?
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{
+                  width: "40px", height: "40px", borderRadius: "10px", background: "rgba(59, 130, 246, 0.12)",
+                  border: "1px solid rgba(59, 130, 246, 0.25)", display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#60a5fa", flexShrink: 0,
+                }}>
+                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: "16px", fontWeight: 800, color: "#f3f4f6" }}>Ubah Role Pengguna</div>
+                  <div style={{ fontSize: "12px", color: "#9ca3af", marginTop: "2px" }}>Manajemen hak akses akun platform</div>
+                </div>
+              </div>
+              <button onClick={() => setRoleModalUser(null)} style={{
+                background: "rgba(255, 255, 255, 0.05)", border: "1px solid rgba(255, 255, 255, 0.1)",
+                color: "#9ca3af", width: "30px", height: "30px", borderRadius: "8px", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px",
+              }}>✕</button>
             </div>
+
+            <div style={{
+              fontSize: "13px", color: "#d1d5db", lineHeight: 1.6, marginBottom: "22px",
+              background: "#121212", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px", padding: "16px",
+            }}>
+              <div style={{ marginBottom: "10px", color: "#9ca3af", fontSize: "12px" }}>
+                Pengguna: <strong style={{ color: "#f3f4f6", fontSize: "13px" }}>{roleModalUser.username}</strong> ({roleModalUser.email})
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <span style={{ padding: "4px 10px", borderRadius: "6px", background: "rgba(255, 255, 255, 0.08)", color: "#9ca3af", fontWeight: 700, fontSize: "12px" }}>
+                  Role Saat Ini: {roleModalUser.role}
+                </span>
+                <span style={{ color: "#60a5fa", fontWeight: 700 }}>→</span>
+                <span style={{
+                  padding: "4px 10px", borderRadius: "6px",
+                  background: roleModalUser.role === "ADMIN" ? "rgba(255, 255, 255, 0.1)" : "rgba(34, 197, 94, 0.2)",
+                  color: roleModalUser.role === "ADMIN" ? "#d1d5db" : "#4ade80",
+                  fontWeight: 700, fontSize: "12px"
+                }}>
+                  Role Baru: {roleModalUser.role === "ADMIN" ? "USER" : "ADMIN"}
+                </span>
+              </div>
+            </div>
+
             <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
               <button onClick={() => setRoleModalUser(null)} style={{
-                padding: "10px 18px", borderRadius: "var(--radius-sm)", background: "rgba(255,255,255,0.06)",
-                border: "1px solid var(--border)", color: "var(--text)", fontSize: "13px", fontWeight: 600, cursor: "pointer",
+                padding: "10px 18px", borderRadius: "8px", background: "rgba(255, 255, 255, 0.06)",
+                border: "1px solid rgba(255, 255, 255, 0.12)", color: "#e5e7eb", fontSize: "13px", fontWeight: 600, cursor: "pointer",
+                transition: "all 0.15s ease",
               }}>Batal</button>
               <button onClick={confirmRoleChange} disabled={submitting} style={{
-                padding: "10px 18px", borderRadius: "var(--radius-sm)", background: "var(--blue)",
-                border: "none", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer", opacity: submitting ? 0.7 : 1,
-              }}>{submitting ? "Memproses..." : "Ubah Role"}</button>
+                padding: "10px 22px", borderRadius: "8px",
+                background: "var(--blue)", border: "none", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer",
+                opacity: submitting ? 0.7 : 1, transition: "all 0.15s ease",
+              }}>{submitting ? "Memproses..." : "Konfirmasi Ubah Role"}</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 2. Modal Edit User */}
-      {editModalUser && (
+      {editModalUser && createPortal(
         <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)", zIndex: 9999,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: "24px",
+          position: "fixed", inset: 0, width: "100vw", height: "100vh", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)", zIndex: 99999,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
         }} onClick={e => e.target === e.currentTarget && setEditModalUser(null)}>
           <div style={{
-            background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
-            padding: "28px", width: "100%", maxWidth: "440px", boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+            background: "#181818",
+            border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: "16px",
+            padding: "26px 30px", width: "100%", maxWidth: "520px",
+            boxShadow: "0 25px 60px -10px rgba(0, 0, 0, 0.85)",
+            animation: "modalFadeIn 0.2s ease-out",
           }}>
-            <div style={{ fontSize: "18px", fontWeight: 800, marginBottom: "6px" }}>Edit Data Pengguna #{editModalUser.id}</div>
-            <div style={{ fontSize: "12px", color: "var(--text-dim)", marginBottom: "20px" }}>
-              Perbarui profil, email, role, atau password terenkripsi.
+            {/* Header */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "22px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{
+                  width: "40px", height: "40px", borderRadius: "10px", background: "rgba(59, 130, 246, 0.12)",
+                  border: "1px solid rgba(59, 130, 246, 0.25)", display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#60a5fa", flexShrink: 0,
+                }}>
+                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: "16px", fontWeight: 800, color: "#f3f4f6", display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span>Edit Data Pengguna</span>
+                    <span style={{ fontSize: "12px", padding: "2px 8px", borderRadius: "6px", background: "rgba(59, 130, 246, 0.18)", color: "#60a5fa", fontFamily: "monospace" }}>#{editModalUser.id}</span>
+                  </div>
+                  <div style={{ fontSize: "12px", color: "#9ca3af", marginTop: "2px" }}>Perbarui profil, hak akses role, dan kredensial</div>
+                </div>
+              </div>
+              <button onClick={() => setEditModalUser(null)} style={{
+                background: "rgba(255, 255, 255, 0.05)", border: "1px solid rgba(255, 255, 255, 0.1)",
+                color: "#9ca3af", width: "30px", height: "30px", borderRadius: "8px", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px",
+              }}>✕</button>
             </div>
-            <form onSubmit={handleEditSubmit} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "6px" }}>Username</label>
-                <input style={{ ...inp, width: "100%", boxSizing: "border-box" }} required
-                  value={editForm.username} onChange={e => setEditForm(f => ({ ...f, username: e.target.value }))} />
+
+            <form onSubmit={handleEditSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              {/* Row 1: Username & Email */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                <div>
+                  <label style={labelStyle}>Username</label>
+                  <input style={customInp} required
+                    value={editForm.username} onChange={e => setEditForm(f => ({ ...f, username: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Email</label>
+                  <input type="email" style={customInp} required
+                    value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
+                </div>
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "6px" }}>Email</label>
-                <input type="email" style={{ ...inp, width: "100%", boxSizing: "border-box" }} required
-                  value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} />
-              </div>
-              <div style={{ display: "flex", gap: "12px" }}>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "6px" }}>Role</label>
-                  <select style={{ ...inp, width: "100%", boxSizing: "border-box" }}
+
+              {/* Row 2: Role, Status, and Verifikasi */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.1fr", gap: "12px" }}>
+                <div>
+                  <label style={labelStyle}>Role</label>
+                  <select style={customSelect}
                     value={editForm.role} onChange={e => setEditForm(f => ({ ...f, role: e.target.value }))}>
-                    <option value="USER">USER</option>
-                    <option value="ADMIN">ADMIN</option>
+                    <option value="USER" style={{ background: "#181818", color: "#fff" }}>USER</option>
+                    <option value="ADMIN" style={{ background: "#181818", color: "#fff" }}>ADMIN</option>
                   </select>
                 </div>
-                <div style={{ flex: 1 }}>
-                  <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "6px" }}>Status</label>
-                  <select style={{ ...inp, width: "100%", boxSizing: "border-box" }}
+                <div>
+                  <label style={labelStyle}>Status Akun</label>
+                  <select style={customSelect}
                     value={editForm.isActive ? "true" : "false"} onChange={e => setEditForm(f => ({ ...f, isActive: e.target.value === "true" }))}>
-                    <option value="true">Aktif</option>
-                    <option value="false">Nonaktif</option>
+                    <option value="true" style={{ background: "#181818", color: "#fff" }}>Aktif</option>
+                    <option value="false" style={{ background: "#181818", color: "#fff" }}>Nonaktif</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={labelStyle}>Verifikasi</label>
+                  <select style={customSelect}
+                    value={editForm.isVerified ? "true" : "false"} onChange={e => setEditForm(f => ({ ...f, isVerified: e.target.value === "true" }))}>
+                    <option value="true" style={{ background: "#181818", color: "#fff" }}>Terverifikasi</option>
+                    <option value="false" style={{ background: "#181818", color: "#fff" }}>Belum Verif</option>
                   </select>
                 </div>
               </div>
+
+              {/* Row 3: Password Baru */}
               <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "6px" }}>Password Baru (Opsional)</label>
-                <input type="password" style={{ ...inp, width: "100%", boxSizing: "border-box" }}
-                  placeholder="Biarkan kosong jika tidak diubah"
+                <label style={labelStyle}>Password Baru (Opsional)</label>
+                <input type="password" style={customInp}
+                  placeholder="Biarkan kosong jika tidak ingin mengubah password"
                   value={editForm.password} onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))} />
+                <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "5px" }}>Minimal 6 karakter jika ingin mengganti password baru.</div>
               </div>
-              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+
+              {/* Action Buttons */}
+              <div style={{ display: "flex", gap: "12px", marginTop: "10px" }}>
                 <button type="button" onClick={() => setEditModalUser(null)} style={{
-                  flex: 1, padding: "12px", borderRadius: "var(--radius-sm)", background: "rgba(255,255,255,0.06)",
-                  border: "1px solid var(--border)", color: "var(--text)", fontSize: "13px", fontWeight: 600, cursor: "pointer",
+                  flex: 1, padding: "11px", borderRadius: "8px", background: "rgba(255, 255, 255, 0.06)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)", color: "#e5e7eb", fontSize: "13px", fontWeight: 600, cursor: "pointer",
                 }}>Batal</button>
                 <button type="submit" disabled={submitting} style={{
-                  flex: 1, padding: "12px", borderRadius: "var(--radius-sm)", background: "var(--blue)",
-                  border: "none", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer", opacity: submitting ? 0.7 : 1,
+                  flex: 1.4, padding: "11px", borderRadius: "8px",
+                  background: "var(--blue)", border: "none", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer", opacity: submitting ? 0.7 : 1,
                 }}>{submitting ? "Menyimpan..." : "Simpan Perubahan"}</button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 3. Modal Konfirmasi Hapus */}
-      {deleteModalUser && (
+      {deleteModalUser && createPortal(
         <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)", zIndex: 9999,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: "24px",
+          position: "fixed", inset: 0, width: "100vw", height: "100vh", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)", zIndex: 99999,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
         }} onClick={e => e.target === e.currentTarget && setDeleteModalUser(null)}>
           <div style={{
-            background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
-            padding: "28px", width: "100%", maxWidth: "420px", boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+            background: "#181818",
+            border: "1px solid rgba(240, 86, 75, 0.3)", borderRadius: "16px",
+            padding: "24px 28px", width: "100%", maxWidth: "460px",
+            boxShadow: "0 25px 60px -10px rgba(0, 0, 0, 0.85)",
+            animation: "modalFadeIn 0.2s ease-out",
           }}>
-            <div style={{ fontSize: "18px", fontWeight: 800, color: "#f0564b", marginBottom: "12px" }}>Konfirmasi Hapus Akun</div>
-            <div style={{ fontSize: "13.5px", color: "var(--text-dim)", lineHeight: 1.5, marginBottom: "20px" }}>
-              Tindakan ini tidak dapat dibatalkan! Apakah Anda yakin ingin menghapus akun <strong style={{ color: "var(--text)" }}>{deleteModalUser.username}</strong> ({deleteModalUser.email}) secara permanen dari database?
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "20px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{
+                  width: "40px", height: "40px", borderRadius: "10px", background: "rgba(240, 86, 75, 0.15)",
+                  border: "1px solid rgba(240, 86, 75, 0.3)", display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#f87171", flexShrink: 0,
+                }}>
+                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: "16px", fontWeight: 800, color: "#f87171" }}>Konfirmasi Hapus Akun</div>
+                  <div style={{ fontSize: "12px", color: "rgba(248, 113, 113, 0.7)", marginTop: "2px" }}>Tindakan ini bersifat permanen</div>
+                </div>
+              </div>
+              <button onClick={() => setDeleteModalUser(null)} style={{
+                background: "rgba(255, 255, 255, 0.05)", border: "1px solid rgba(255, 255, 255, 0.1)",
+                color: "#9ca3af", width: "30px", height: "30px", borderRadius: "8px", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px",
+              }}>✕</button>
             </div>
+
+            <div style={{
+              fontSize: "13px", color: "#d1d5db", lineHeight: 1.6, marginBottom: "22px",
+              background: "#121212", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: "10px", padding: "16px",
+            }}>
+              Apakah Anda yakin ingin menghapus akun <strong style={{ color: "#f3f4f6" }}>{deleteModalUser.username}</strong> ({deleteModalUser.email}) secara permanen? Data riwayat transaksi &amp; portofolio terkait user ini akan dihapus.
+            </div>
+
             <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
               <button onClick={() => setDeleteModalUser(null)} style={{
-                padding: "10px 18px", borderRadius: "var(--radius-sm)", background: "rgba(255,255,255,0.06)",
-                border: "1px solid var(--border)", color: "var(--text)", fontSize: "13px", fontWeight: 600, cursor: "pointer",
+                padding: "10px 18px", borderRadius: "8px", background: "rgba(255, 255, 255, 0.06)",
+                border: "1px solid rgba(255, 255, 255, 0.12)", color: "#e5e7eb", fontSize: "13px", fontWeight: 600, cursor: "pointer",
               }}>Batal</button>
               <button onClick={confirmDeleteUser} disabled={submitting} style={{
-                padding: "10px 18px", borderRadius: "var(--radius-sm)", background: "#f0564b",
-                border: "none", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer", opacity: submitting ? 0.7 : 1,
+                padding: "10px 22px", borderRadius: "8px",
+                background: "var(--red)", border: "none", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer",
+                opacity: submitting ? 0.7 : 1,
               }}>{submitting ? "Menghapus..." : "Hapus Akun"}</button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* 4. Modal Tambah User */}
-      {showCreate && (
+      {showCreate && createPortal(
         <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)", zIndex: 9999,
-          display: "flex", alignItems: "center", justifyContent: "center", padding: "24px",
+          position: "fixed", inset: 0, width: "100vw", height: "100vh", background: "rgba(0, 0, 0, 0.75)", backdropFilter: "blur(8px)",
+          WebkitBackdropFilter: "blur(8px)", zIndex: 99999,
+          display: "flex", alignItems: "center", justifyContent: "center", padding: "20px",
         }} onClick={e => e.target === e.currentTarget && setShowCreate(false)}>
           <div style={{
-            background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "var(--radius)",
-            padding: "28px", width: "100%", maxWidth: "420px", boxShadow: "0 20px 40px rgba(0,0,0,0.5)",
+            background: "#181818",
+            border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: "16px",
+            padding: "26px 30px", width: "100%", maxWidth: "500px",
+            boxShadow: "0 25px 60px -10px rgba(0, 0, 0, 0.85)",
+            animation: "modalFadeIn 0.2s ease-out",
           }}>
-            <div style={{ fontSize: "18px", fontWeight: 800, marginBottom: "20px" }}>Tambah User Baru</div>
-            <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "6px" }}>Username</label>
-                <input type="text" minLength={3} required placeholder="Minimal 3 karakter"
-                  style={{ ...inp, width: "100%", boxSizing: "border-box" }}
-                  value={newUser.username} onChange={e => setNewUser(n => ({ ...n, username: e.target.value }))} />
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "22px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                <div style={{
+                  width: "40px", height: "40px", borderRadius: "10px", background: "rgba(59, 130, 246, 0.12)",
+                  border: "1px solid rgba(59, 130, 246, 0.25)", display: "flex", alignItems: "center", justifyContent: "center",
+                  color: "#60a5fa", flexShrink: 0,
+                }}>
+                  <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
+                  </svg>
+                </div>
+                <div>
+                  <div style={{ fontSize: "16px", fontWeight: 800, color: "#f3f4f6" }}>Tambah User Baru</div>
+                  <div style={{ fontSize: "12px", color: "#9ca3af", marginTop: "2px" }}>Daftarkan pengguna platform baru</div>
+                </div>
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "6px" }}>Email</label>
-                <input type="email" required placeholder="contoh: user@domain.com"
-                  style={{ ...inp, width: "100%", boxSizing: "border-box" }}
-                  value={newUser.email} onChange={e => setNewUser(n => ({ ...n, email: e.target.value }))} />
+              <button onClick={() => setShowCreate(false)} style={{
+                background: "rgba(255, 255, 255, 0.05)", border: "1px solid rgba(255, 255, 255, 0.1)",
+                color: "#9ca3af", width: "30px", height: "30px", borderRadius: "8px", cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", fontSize: "16px",
+              }}>✕</button>
+            </div>
+
+            <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "14px" }}>
+                <div>
+                  <label style={labelStyle}>Username</label>
+                  <input type="text" minLength={3} required placeholder="Minimal 3 karakter"
+                    style={customInp}
+                    value={newUser.username} onChange={e => setNewUser(n => ({ ...n, username: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Email</label>
+                  <input type="email" required placeholder="user@domain.com"
+                    style={customInp}
+                    value={newUser.email} onChange={e => setNewUser(n => ({ ...n, email: e.target.value }))} />
+                </div>
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "6px" }}>Password</label>
-                <input type="password" minLength={6} required placeholder="Minimal 6 karakter"
-                  style={{ ...inp, width: "100%", boxSizing: "border-box" }}
-                  value={newUser.password} onChange={e => setNewUser(n => ({ ...n, password: e.target.value }))} />
+
+              <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "14px" }}>
+                <div>
+                  <label style={labelStyle}>Password</label>
+                  <input type="password" minLength={6} required placeholder="Minimal 6 karakter"
+                    style={customInp}
+                    value={newUser.password} onChange={e => setNewUser(n => ({ ...n, password: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={labelStyle}>Role</label>
+                  <select style={customSelect}
+                    value={newUser.role} onChange={e => setNewUser(n => ({ ...n, role: e.target.value }))}>
+                    <option value="USER" style={{ background: "#181818", color: "#fff" }}>USER</option>
+                    <option value="ADMIN" style={{ background: "#181818", color: "#fff" }}>ADMIN</option>
+                  </select>
+                </div>
               </div>
-              <div>
-                <label style={{ display: "block", fontSize: "11px", fontWeight: 700, color: "var(--text-dim)", textTransform: "uppercase", letterSpacing: ".04em", marginBottom: "6px" }}>Role (Strict: USER / ADMIN)</label>
-                <select style={{ ...inp, width: "100%", boxSizing: "border-box" }}
-                  value={newUser.role} onChange={e => setNewUser(n => ({ ...n, role: e.target.value }))}>
-                  <option value="USER">USER</option>
-                  <option value="ADMIN">ADMIN</option>
-                </select>
+
+              <div style={{
+                fontSize: "12px", color: "#9ca3af", background: "rgba(59, 130, 246, 0.08)",
+                border: "1px solid rgba(59, 130, 246, 0.18)", borderRadius: "8px", padding: "10px 14px",
+                display: "flex", alignItems: "center", gap: "8px",
+              }}>
+                <span style={{ color: "#3ecf8e", fontWeight: 800 }}>✓</span>
+                <span>Akun yang dibuat oleh Admin otomatis langsung <strong>Terverifikasi</strong>.</span>
               </div>
-              <div style={{ display: "flex", gap: "10px", marginTop: "10px" }}>
+
+              <div style={{ display: "flex", gap: "12px", marginTop: "6px" }}>
                 <button type="button" onClick={() => setShowCreate(false)} style={{
-                  flex: 1, padding: "12px", borderRadius: "var(--radius-sm)", background: "rgba(255,255,255,0.06)",
-                  border: "1px solid var(--border)", color: "var(--text)", fontSize: "13px", fontWeight: 600, cursor: "pointer",
+                  flex: 1, padding: "11px", borderRadius: "8px", background: "rgba(255, 255, 255, 0.06)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)", color: "#e5e7eb", fontSize: "13px", fontWeight: 600, cursor: "pointer",
                 }}>Batal</button>
                 <button type="submit" disabled={creating} style={{
-                  flex: 1, padding: "12px", borderRadius: "var(--radius-sm)", background: "var(--blue)",
-                  border: "none", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer", opacity: creating ? 0.7 : 1,
+                  flex: 1.4, padding: "11px", borderRadius: "8px",
+                  background: "var(--blue)", border: "none", color: "#fff", fontSize: "13px", fontWeight: 700, cursor: "pointer", opacity: creating ? 0.7 : 1,
                 }}>{creating ? "Memproses..." : "Tambah User"}</button>
               </div>
             </form>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
