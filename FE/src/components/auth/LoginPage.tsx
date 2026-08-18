@@ -16,6 +16,7 @@ export function LoginPage() {
   const [regPass, setRegPass] = useState("")
   const [regPassConf, setRegPassConf] = useState("")
   const [showRegPass, setShowRegPass] = useState(false)
+  const [showRegPassConf, setShowRegPassConf] = useState(false)
 
   const [otpEmail, setOtpEmail] = useState("")
   const [devCode, setDevCode] = useState<string | null>(null)
@@ -234,8 +235,12 @@ export function LoginPage() {
                   </div>
                   <div>
                     <label style={lbl}>Konfirmasi Password</label>
-                    <input type="password" required style={inp} placeholder="••••••••"
-                      value={regPassConf} onChange={e => setRegPassConf(e.target.value)} onFocus={onF} onBlur={onB} />
+                    <div style={{ position: "relative" }}>
+                      <input type={showRegPassConf ? "text" : "password"} required
+                        style={{ ...inp, paddingRight: "42px" }} placeholder="••••••••"
+                        value={regPassConf} onChange={e => setRegPassConf(e.target.value)} onFocus={onF} onBlur={onB} />
+                      <EyeBtn show={showRegPassConf} onToggle={() => setShowRegPassConf(v => !v)} />
+                    </div>
                   </div>
                   <button type="submit" className="at-sub" disabled={loading} style={{ marginTop: "4px" }}>
                     {loading ? "Mendaftarkan..." : "Buat Akun"}

@@ -9,11 +9,10 @@ services:
       - "5000:5000"
     volumes:
       - ./BE/data:/app/data
-      - ./genesis:/app/genesis:ro
     environment:
       - PORT=5000
-      - DB_PATH=/app/data/atheric.db
-      - GENESIS_DIR=/app/genesis
+      - DB_PATH=/app/data/atheric_app.db
+      - MARKET_DB_PATH=/app/data/idx_scraped_data.db
       - ALLOWED_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:80,http://127.0.0.1:5173
       - JWT_SECRET=${JWT_SECRET:-atheric_ai_super_secret_jwt_key_2026_change_in_prod}
       - RESEND_API_KEY=${RESEND_API_KEY}

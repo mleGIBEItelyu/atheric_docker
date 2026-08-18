@@ -294,7 +294,11 @@ func (m *GenesisManager) findAndSetBaseDir() string {
 	candidates := []string{
 		"../genesis",
 		"./genesis",
+		"../TrainerProduksiML/genesis",
+		"./TrainerProduksiML/genesis",
+		"../TrainerProduksiML/engine/artifacts/releases/Genesis2.0",
 		"/app/genesis",
+		"/app/TrainerProduksiML/genesis",
 		"/genesis",
 		"../../genesis",
 		"genesis",

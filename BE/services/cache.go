@@ -68,6 +68,11 @@ func (c *FastRAMCache) Invalidate(key string) {
 	delete(c.items, key)
 }
 
+// Delete removes cached item (alias to Invalidate)
+func (c *FastRAMCache) Delete(key string) {
+	c.Invalidate(key)
+}
+
 // Clear flushes the entire in-memory cache
 func (c *FastRAMCache) Clear() {
 	c.mu.Lock()

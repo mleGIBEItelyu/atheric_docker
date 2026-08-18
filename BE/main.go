@@ -230,6 +230,11 @@ func main() {
 	api.Get("/genesis/metrics", handlers.GetGenesisMetrics)
 	api.Get("/genesis/config", handlers.GetGenesisConfig)
 
+	// Automated Sync Routes (Protected by X-Sync-Key)
+	api.Post("/sync/market", handlers.SyncMarketData)
+	api.Post("/sync/news", handlers.SyncNews)
+	api.Post("/sync/forecast", handlers.SyncForecast)
+
 	// User Routes
 	protected := api.Group("", middleware.Protected())
 	protected.Get("/auth/me", handlers.GetMe)
@@ -281,7 +286,7 @@ func main() {
 
 	go func() {
 		log.Printf("Server aktif di port %s", port)
-		if err := app.Listen(":" + port); err != nil {
+		if err := app.Listen("0.0.0.0:" + port); err != nil {
 			log.Printf("Server stopped: %v", err)
 		}
 	}()

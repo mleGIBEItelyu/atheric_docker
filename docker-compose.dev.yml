@@ -6,13 +6,14 @@ services:
     working_dir: /app
     volumes:
       - ./BE:/app
-      - ./genesis:/genesis:ro
     ports:
       - "5000:5000"
+    env_file:
+      - ./BE/.env
     environment:
       - PORT=5000
-      - DB_PATH=data/atheric.db
-      - GENESIS_DIR=/genesis
+      - DB_PATH=data/atheric_app.db
+      - MARKET_DB_PATH=data/idx_scraped_data.db
       - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:80,http://127.0.0.1:5173,http://127.0.0.1
       - JWT_SECRET=${JWT_SECRET:-atheric_ai_super_secret_jwt_key_2026_change_in_prod}
       - RESEND_API_KEY=${RESEND_API_KEY}
@@ -37,7 +38,7 @@ services:
       - VITE_API_URL=http://localhost:5000
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
-    command: sh -c "[ -d node_modules ] || npm install; npm run dev -- --host 0.0.0.0 --port 5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
     depends_on:
       - backend-dev
     networks:

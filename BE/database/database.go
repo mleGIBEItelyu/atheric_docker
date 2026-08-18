@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"atheric-be/models"
 
@@ -13,46 +14,46 @@ import (
 	"gorm.io/gorm"
 )
 
-var DB *gorm.DB
+var (
+	DB       *gorm.DB // Database 1 (AppDB): User Auth, Sessions, Tickets, Watchlists, Forecast 1M Cache, Settings
+	MarketDB *gorm.DB // Database 2 (MarketDB): Scraped Market Data, OHLCV, Technical Features, Metadata from TrainerProduksiML
+)
 
-// InitDB initializes SQLite embedded database and migrates schemas
+// InitDB initializes both SQLite embedded databases and runs schema migrations
 func InitDB() *gorm.DB {
-	dbPath := os.Getenv("DB_PATH")
-	if dbPath == "" {
-		dbPath = "data/atheric.db"
+	// 1. Initialize AppDB (User & Application State)
+	appDBPath := os.Getenv("DB_PATH")
+	if appDBPath == "" {
+		appDBPath = "data/atheric_app.db"
 	}
 
-	// Ensure directory exists
-	dir := filepath.Dir(dbPath)
+	dir := filepath.Dir(appDBPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		log.Fatalf("Failed to create database directory: %v", err)
 	}
 
-	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{
-		PrepareStmt: true, // Cache prepared statements for fast execution
+	db, err := gorm.Open(sqlite.Open(appDBPath), &gorm.Config{
+		PrepareStmt: true,
 	})
 	if err != nil {
-		log.Fatalf("Failed to connect database: %v", err)
+		log.Fatalf("Failed to connect App Database (%s): %v", appDBPath, err)
 	}
 
-	// Optimize SQLite PRAGMAs for high-concurrency low-spec VPS
+	// Optimize AppDB PRAGMAs
 	db.Exec("PRAGMA journal_mode = WAL;")
 	db.Exec("PRAGMA synchronous = NORMAL;")
 	db.Exec("PRAGMA cache_size = -32000;")
 	db.Exec("PRAGMA temp_store = MEMORY;")
-	db.Exec("PRAGMA mmap_size = 268435456;")
 	db.Exec("PRAGMA busy_timeout = 5000;")
 
-	// Connection Pool limits to avoid thread explosion on budget VPS
-	sqlDB, err := db.DB()
-	if err == nil {
+	if sqlDB, err := db.DB(); err == nil {
 		sqlDB.SetMaxOpenConns(50)
 		sqlDB.SetMaxIdleConns(10)
 	}
 
-	log.Println("Database connection established (SQLite WAL Mode). Running migrations...")
+	log.Printf("[DB-1 OK] App Database connected (%s) with SQLite WAL Mode", appDBPath)
 
-	// Auto-migrate schema tables
+	// Auto-migrate schema tables on AppDB
 	err = db.AutoMigrate(
 		&models.User{},
 		&models.ActivityLog{},
@@ -63,18 +64,111 @@ func InitDB() *gorm.DB {
 		&models.SupportTicket{},
 		&models.UserSetting{},
 		&models.DeviceSession{},
-		&models.ModelForecastCache{},
+		&models.ModelForecastCache{}, // Menyimpan hasil forecast 1 bulan ke depan
 		&models.Notification{},
 		&models.StockSynthesis{},
 	)
 	if err != nil {
-		log.Fatalf("Database migration failed: %v", err)
+		log.Fatalf("App Database migration failed: %v", err)
 	}
 
 	DB = db
 	seedInitialData(db)
 
+	// 2. Initialize MarketDB (Scraped Data & ML Store from TrainerProduksiML)
+	initMarketDB(db)
+
 	return db
+}
+
+// initMarketDB connects to Market Data SQLite store and synchronizes stocks to AppDB
+func initMarketDB(appDB *gorm.DB) {
+	marketCandidates := []string{
+		os.Getenv("MARKET_DB_PATH"),
+		"data/idx_scraped_data.db",
+		"../BE/data/idx_scraped_data.db",
+		"BE/data/idx_scraped_data.db",
+		"/app/data/idx_scraped_data.db",
+		"data/atheric_market.db",
+	}
+
+	for _, p := range marketCandidates {
+		if p == "" {
+			continue
+		}
+		if _, err := os.Stat(p); err == nil {
+			mDB, err := gorm.Open(sqlite.Open(p), &gorm.Config{
+				PrepareStmt: true,
+			})
+			if err == nil {
+				mDB.Exec("PRAGMA query_only = ON;") // Read-only safety on market scraped store
+				MarketDB = mDB
+				log.Printf("[DB-2 OK] Market Scraper Database connected (%s)", p)
+				break
+			}
+		}
+	}
+
+	if MarketDB == nil {
+		log.Printf("[DB-2 INFO] Market Scraper Database not found or offline. Using cached stocks in AppDB.")
+		return
+	}
+
+	// Sync scraped metadata and latest prices to AppDB in background so server boots up instantly
+	go SyncMarketDataToApp(appDB, MarketDB)
+}
+
+// SyncMarketDataToApp synchronizes scraped stocks from MarketDB into AppDB
+func SyncMarketDataToApp(appDB, mDB *gorm.DB) {
+	if mDB == nil || appDB == nil {
+		return
+	}
+
+	type ScrapedMeta struct {
+		Ticker   string `gorm:"column:ticker"`
+		Sector   string `gorm:"column:sector"`
+		Name     string `gorm:"column:name"`
+	}
+
+	var scrapedList []ScrapedMeta
+	if err := mDB.Table("metadata_saham").Select("ticker, sector, name").Scan(&scrapedList).Error; err == nil && len(scrapedList) > 0 {
+		log.Printf("[SYNC] Syncing %d stocks from MarketDB to AppDB in background...", len(scrapedList))
+		for _, sm := range scrapedList {
+			cleanTicker := strings.TrimSuffix(strings.ToUpper(sm.Ticker), ".JK")
+			
+			// Find latest close from raw_teknikal if exists
+			type LatestPrice struct {
+				Close float64 `gorm:"column:close"`
+				Date  string  `gorm:"column:date"`
+			}
+			var lp LatestPrice
+			_ = mDB.Table("raw_teknikal").Where("ticker = ?", sm.Ticker).Order("date desc").Limit(1).Scan(&lp)
+
+			var existing models.Stock
+			if err := appDB.Where("ticker = ?", cleanTicker).First(&existing).Error; err != nil {
+				// Insert new stock from scraped universe
+				price := lp.Close
+				if price <= 0 {
+					price = 1000
+				}
+				appDB.Create(&models.Stock{
+					Ticker:          cleanTicker,
+					Name:            sm.Name,
+					Price:           price,
+					Category:        sm.Sector,
+					ConfidenceLevel: 85.0,
+					Signal:          "HOLD",
+				})
+			} else if lp.Close > 0 {
+				// Update latest scraped price and sector
+				appDB.Model(&existing).Updates(map[string]interface{}{
+					"price":    lp.Close,
+					"category": sm.Sector,
+				})
+			}
+		}
+		log.Printf("[SYNC OK] Market universe successfully synchronized to AppDB.")
+	}
 }
 
 // Seed initial demo data for ADMIN and USER roles
