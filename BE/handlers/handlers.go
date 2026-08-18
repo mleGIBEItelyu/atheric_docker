@@ -64,7 +64,9 @@ func Login(c *fiber.Ctx) error {
 
 	var req LoginRequest
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid request body"})
+		if err := json.Unmarshal(c.Body(), &req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Format request tidak valid"})
+		}
 	}
 
 	req.Username = sanitizeXSS(req.Username)
@@ -184,7 +186,9 @@ func Register(c *fiber.Ctx) error {
 
 	var req RegisterReq
 	if err := c.BodyParser(&req); err != nil {
-		return c.Status(400).JSON(fiber.Map{"error": "Format request tidak valid"})
+		if err := json.Unmarshal(c.Body(), &req); err != nil {
+			return c.Status(400).JSON(fiber.Map{"error": "Format request tidak valid"})
+		}
 	}
 
 	req.Username = sanitizeXSS(req.Username)
@@ -2015,7 +2019,7 @@ func generateAndSaveStockSynthesis(ticker, dateKey string) []string {
 	var paras []string
 	aiResp, err := services.CallGeminiAPI([]services.GeminiContent{
 		{
-			Role: "user",
+			Role:  "user",
 			Parts: []services.GeminiPart{{Text: prompt}},
 		},
 	}, sysPrompt, 0.5, 600)
@@ -2062,4 +2066,3 @@ func generateAndSaveStockSynthesis(ticker, dateKey string) []string {
 
 	return paras
 }
-

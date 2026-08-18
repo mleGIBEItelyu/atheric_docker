@@ -52,12 +52,9 @@ func BotProtection() fiber.Handler {
 		}
 
 		// Honeypot check for spam bots
-		if c.Method() == "POST" || c.Method() == "PUT" {
-			type HoneypotReq struct {
-				HpWebsite string `json:"hp_website"`
-			}
-			var hp HoneypotReq
-			if err := c.BodyParser(&hp); err == nil && strings.TrimSpace(hp.HpWebsite) != "" {
+		if (c.Method() == "POST" || c.Method() == "PUT") && len(c.Body()) > 0 {
+			bodyStr := string(c.Body())
+			if strings.Contains(bodyStr, `"hp_website"`) && !strings.Contains(bodyStr, `"hp_website":""`) && !strings.Contains(bodyStr, `"hp_website":null`) {
 				services.GlobalMonitor.RecordBotAttempt()
 				return c.Status(403).JSON(fiber.Map{
 					"error": "Bot spam terdeteksi melalui bidang honeypot.",

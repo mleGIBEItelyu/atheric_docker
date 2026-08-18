@@ -73,6 +73,18 @@ func main() {
 		EnableStackTrace: false,
 	}))
 
+	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
+	if allowedOrigins == "" || allowedOrigins == "*" {
+		allowedOrigins = "http://localhost:5173, http://localhost:3000, http://127.0.0.1:5173, http://localhost:80, http://127.0.0.1:80, http://localhost"
+	}
+
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     allowedOrigins,
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Genesis-Key, X-Sync-Key, X-Requested-With",
+		AllowMethods:     "GET, POST, PUT, DELETE, OPTIONS, PATCH",
+		AllowCredentials: true,
+	}))
+
 	// Gzip / Brotli Payload Compression (High speed on low-bandwidth/mobile connections)
 	app.Use(compress.New(compress.Config{
 		Level: compress.LevelBestSpeed,
@@ -99,17 +111,6 @@ func main() {
 
 	app.Use(logger.New())
 	app.Use(middleware.TrafficLogger())
-
-	allowedOrigins := os.Getenv("ALLOWED_ORIGINS")
-	if allowedOrigins == "" || allowedOrigins == "*" {
-		allowedOrigins = "http://localhost:5173, http://localhost:3000, http://127.0.0.1:5173"
-	}
-
-	app.Use(cors.New(cors.Config{
-		AllowOrigins: allowedOrigins,
-		AllowHeaders: "Origin, Content-Type, Accept, Authorization, X-Genesis-Key",
-		AllowMethods: "GET, POST, PUT, DELETE, OPTIONS",
-	}))
 
 	app.Use("/api/ws/monitor", func(c *fiber.Ctx) error {
 		if websocket.IsWebSocketUpgrade(c) {
