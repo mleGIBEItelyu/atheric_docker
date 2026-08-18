@@ -20,7 +20,7 @@ services:
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-Atheric AI <onboarding@resend.dev>}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
-    command: sh -c "go mod tidy && go run main.go"
+    command: sh -c "go run main.go"
     networks:
       - atheric-dev-net
 
@@ -38,7 +38,7 @@ services:
       - VITE_API_URL=http://localhost:5000
       - CHOKIDAR_USEPOLLING=true
       - WATCHPACK_POLLING=true
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    command: sh -c "npm run dev -- --host 0.0.0.0 --port 5173"
     depends_on:
       - backend-dev
     networks:

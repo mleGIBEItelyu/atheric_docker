@@ -1,8 +1,8 @@
-# Atheric AI — Go Backend API (Production Ready with JWT Auth)
+# Atheric AI -- Go Backend API (Production Ready with JWT Auth)
 
 Layanan RESTful API backend untuk platform **Atheric AI** yang dibangun menggunakan bahasa pemrograman **Golang** dan framework **Go Fiber**, serta menggunakan **SQLite** sebagai *embedded database*.
 
-Backend ini dirancang **Production Ready**, aman, dan sangat efisien agar dapat berjalan secara optimal pada VPS murah berspesifikasi rendah (RAM ~512MB – 1GB) dengan konsumsi memori hanya **~20MB RAM**.
+Backend ini dirancang **Production Ready**, aman, dan sangat efisien agar dapat berjalan secara optimal pada VPS murah berspesifikasi rendah (RAM ~512MB - 1GB) dengan konsumsi memori hanya **~20MB RAM**.
 
 ---
 

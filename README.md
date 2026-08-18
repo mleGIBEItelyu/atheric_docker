@@ -1,4 +1,4 @@
-# ⚡ Atheric AI — Fullstack Monorepo & Docker Suite
+# ⚡ Atheric AI -- Fullstack Monorepo & Docker Suite
 
 Atheric AI adalah platform terminal finansial cerdas untuk analisis saham, pemodelan proyeksi harga (*forecast*), evaluasi akurasi AI, dan pemantauan trafik real-time melalui WebSocket.
 
