@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { FilterIcon, DownloadIcon } from '@/components/common/icons'
 import { useRankingRows } from '@/hooks/useMarkets'
 import { useToast } from '@/components/common/Toast'
+import { StockLogo } from '@/components/common/StockLogo'
 import type { RankingRow } from '@/types'
 
 type RecFilter = 'ALL' | 'BUY' | 'HOLD' | 'SELL'
@@ -114,10 +115,10 @@ export function RankingTable({ searchQuery }: { searchQuery?: string }) {
         <span className="card-title">Full Ranking Model</span>
         <div className="table-actions">
           <button className="ghost-btn" onClick={() => setShowFilter(f => !f)}>
-            <FilterIcon/>Filter
+            <FilterIcon />Filter
           </button>
           <button className="ghost-btn" onClick={() => { exportCSV(filtered); toast.success('Export berhasil', `${filtered.length} emiten diekspor ke file CSV.`) }}>
-            <DownloadIcon/>Export
+            <DownloadIcon />Export
           </button>
         </div>
       </div>
@@ -146,7 +147,12 @@ export function RankingTable({ searchQuery }: { searchQuery?: string }) {
               {filtered.map(row => (
                 <tr key={row.rank} onClick={() => navigate(`/stock/${row.ticker}`)} style={{ cursor: 'pointer' }}>
                   <td className="td-rank">{row.rank}</td>
-                  <td className="td-ticker">{row.ticker}</td>
+                  <td className="td-ticker">
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                      <StockLogo ticker={row.ticker} name={row.company} size={24} />
+                      <span>{row.ticker}</span>
+                    </div>
+                  </td>
                   <td className="td-company">
                     <span style={{ display: 'inline-flex', alignItems: 'center' }}>
                       {row.company}
@@ -157,7 +163,7 @@ export function RankingTable({ searchQuery }: { searchQuery?: string }) {
                   <td>
                     <div className="conf-cell">
                       <span className="conf-text">{row.conf}</span>
-                      <span className="conf-bar"><span style={{ width: `${row.confPct}%` }}/></span>
+                      <span className="conf-bar"><span style={{ width: `${row.confPct}%` }} /></span>
                     </div>
                   </td>
                   <td><span className={`pill ${row.rec.toLowerCase()}`}>{row.rec}</span></td>
