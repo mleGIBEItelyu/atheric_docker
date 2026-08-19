@@ -130,6 +130,9 @@ func startAuditAndSessionPruner(db *gorm.DB) {
 		if resSessions.Error == nil && resSessions.RowsAffected > 0 {
 			log.Printf("[PRUNER OK] Cleaned up %d expired device sessions (>30 days).", resSessions.RowsAffected)
 		}
+
+		// Run SQLite internal index optimization
+		db.Exec("PRAGMA optimize;")
 	}
 
 	runPrune()
