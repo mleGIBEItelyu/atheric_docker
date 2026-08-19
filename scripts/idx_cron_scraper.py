@@ -29,13 +29,30 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 BE_DATA_DIR = ROOT_DIR / "BE" / "data"
 DB_PATH = Path(os.environ.get("MARKET_DB_PATH", BE_DATA_DIR / "idx_scraped_data.db"))
 
-# Top IDX Universe
+# Full Liquid IDX Universe (80+ Major Tickers across all 11 IDX Sectors)
 IDX_TICKERS = [
-    "BBCA.JK", "BBRI.JK", "BMRI.JK", "BBNI.JK", "ASII.JK",
-    "TLKM.JK", "UNVR.JK", "ICBP.JK", "INDF.JK", "GOTO.JK",
-    "AMMN.JK", "ADRO.JK", "PTBA.JK", "KLBF.JK", "CPIN.JK",
-    "MDKA.JK", "PGAS.JK", "SMGR.JK", "INCO.JK", "BRPT.JK",
-    "ANTM.JK", "MEDC.JK", "ACES.JK", "BRIS.JK", "BUMI.JK",
+    # Top Banking & Finance
+    "BBCA.JK", "BBRI.JK", "BMRI.JK", "BBNI.JK", "BRIS.JK", "BDMN.JK", "BBTN.JK", "BTPS.JK", "BNGA.JK", "ARTO.JK", "PNBN.JK", "MEGA.JK",
+    # Energy, Oil & Coal
+    "ADRO.JK", "PTBA.JK", "PGAS.JK", "MEDC.JK", "BUMI.JK", "INDY.JK", "ITMG.JK", "HRUM.JK", "AKRA.JK", "ENRG.JK", "RAJA.JK", "ELSA.JK", "PGEO.JK", "DOID.JK",
+    # Mining, Gold & Metals
+    "ANTM.JK", "INCO.JK", "MDKA.JK", "AMMN.JK", "TINS.JK", "NCKL.JK", "MBMA.JK", "BRMS.JK", "PSAB.JK",
+    # Telco & Technology
+    "TLKM.JK", "GOTO.JK", "ISAT.JK", "EXCL.JK", "EMTK.JK", "BUKA.JK", "MTDL.JK", "WIRG.JK",
+    # Consumer Non-Cyclicals & F&B
+    "UNVR.JK", "ICBP.JK", "INDF.JK", "CPIN.JK", "JPFA.JK", "MYOR.JK", "CMRY.JK", "HMSP.JK", "GGRM.JK",
+    # Retail & Consumer Discretionary
+    "ACES.JK", "MAPI.JK", "MAPA.JK", "ERAA.JK", "AMRT.JK", "MIDI.JK", "RALS.JK",
+    # Healthcare & Pharmaceuticals
+    "KLBF.JK", "MIKA.JK", "HEAL.JK", "SILO.JK", "SIDO.JK", "KAEF.JK",
+    # Basic Materials, Chemicals & Cement
+    "SMGR.JK", "INTP.JK", "BRPT.JK", "TPIA.JK", "ESSA.JK", "AVIA.JK",
+    # Automotive & Heavy Industrials
+    "ASII.JK", "AUTO.JK", "UNTR.JK", "HEXA.JK",
+    # Property & Real Estate
+    "CTRA.JK", "BSDE.JK", "PWON.JK", "SMRA.JK", "ASRI.JK", "DILD.JK",
+    # Infrastructure, Toll & Logistics
+    "JSMR.JK", "TOWR.JK", "TBIG.JK", "SMDR.JK", "TMAS.JK", "ASSA.JK", "BIRD.JK",
 ]
 
 # Kalender Libur Lengkap Bursa Efek Indonesia (IDX) & Libur Nasional Indonesia (2025 - 2027)
