@@ -142,43 +142,186 @@ func ResolveIPLocation(ip string) GeoLocation {
 	return fallback
 }
 
-// ParseUserAgent extracts friendly device name and browser
+// ParseUserAgent extracts friendly device name, OS, and browser with version
 func ParseUserAgent(ua string) (deviceName string, browserName string) {
 	if ua == "" {
 		return "Windows PC", "Web Browser"
 	}
 
-	// Browser Detection
-	if strings.Contains(ua, "Edg/") || strings.Contains(ua, "Edge/") {
-		browserName = "Microsoft Edge"
-	} else if strings.Contains(ua, "Chrome/") && !strings.Contains(ua, "Edg/") {
-		browserName = "Google Chrome"
-	} else if strings.Contains(ua, "Firefox/") {
-		browserName = "Mozilla Firefox"
-	} else if strings.Contains(ua, "Safari/") && !strings.Contains(ua, "Chrome/") {
-		browserName = "Apple Safari"
-	} else if strings.Contains(ua, "Opera") || strings.Contains(ua, "OPR/") {
+	cleanUA := strings.TrimSpace(ua)
+
+	// -------------------------------------------------------------
+	// 1. Browser Detection (with Version when available)
+	// -------------------------------------------------------------
+	if strings.Contains(cleanUA, "Brave/") {
+		browserName = extractBrowserWithVersion("Brave", "Brave/", cleanUA)
+	} else if strings.Contains(cleanUA, "Arc/") {
+		browserName = extractBrowserWithVersion("Arc Browser", "Arc/", cleanUA)
+	} else if strings.Contains(cleanUA, "Vivaldi/") {
+		browserName = extractBrowserWithVersion("Vivaldi", "Vivaldi/", cleanUA)
+	} else if strings.Contains(cleanUA, "SamsungBrowser/") {
+		browserName = extractBrowserWithVersion("Samsung Internet", "SamsungBrowser/", cleanUA)
+	} else if strings.Contains(cleanUA, "OPR/") {
+		browserName = extractBrowserWithVersion("Opera", "OPR/", cleanUA)
+	} else if strings.Contains(cleanUA, "Opera") {
 		browserName = "Opera Browser"
+	} else if strings.Contains(cleanUA, "Edg/") || strings.Contains(cleanUA, "Edge/") {
+		tag := "Edg/"
+		if strings.Contains(cleanUA, "Edge/") {
+			tag = "Edge/"
+		}
+		browserName = extractBrowserWithVersion("Microsoft Edge", tag, cleanUA)
+	} else if strings.Contains(cleanUA, "Chrome/") || strings.Contains(cleanUA, "CriOS/") {
+		tag := "Chrome/"
+		if strings.Contains(cleanUA, "CriOS/") {
+			tag = "CriOS/"
+		}
+		browserName = extractBrowserWithVersion("Google Chrome", tag, cleanUA)
+	} else if strings.Contains(cleanUA, "Firefox/") || strings.Contains(cleanUA, "FxiOS/") {
+		tag := "Firefox/"
+		if strings.Contains(cleanUA, "FxiOS/") {
+			tag = "FxiOS/"
+		}
+		browserName = extractBrowserWithVersion("Mozilla Firefox", tag, cleanUA)
+	} else if strings.Contains(cleanUA, "Safari/") && !strings.Contains(cleanUA, "Chrome/") && !strings.Contains(cleanUA, "Android") {
+		if strings.Contains(cleanUA, "Version/") {
+			browserName = extractBrowserWithVersion("Apple Safari", "Version/", cleanUA)
+		} else {
+			browserName = "Apple Safari"
+		}
+	} else if strings.Contains(cleanUA, "PostmanRuntime/") {
+		browserName = "Postman Client"
+	} else if strings.Contains(cleanUA, "curl/") {
+		browserName = "cURL CLI"
+	} else if strings.Contains(cleanUA, "python-requests") || strings.Contains(cleanUA, "Python/") {
+		browserName = "Python API Client"
 	} else {
 		browserName = "Web Browser"
 	}
 
-	// Device / OS Detection
-	if strings.Contains(ua, "iPhone") {
-		deviceName = "Apple iPhone"
-	} else if strings.Contains(ua, "iPad") {
-		deviceName = "Apple iPad"
-	} else if strings.Contains(ua, "Android") {
-		deviceName = "Android Device"
-	} else if strings.Contains(ua, "Macintosh") || strings.Contains(ua, "Mac OS") {
-		deviceName = "MacBook / macOS"
-	} else if strings.Contains(ua, "Windows") {
+	// -------------------------------------------------------------
+	// 2. OS & Device Detection
+	// -------------------------------------------------------------
+	if strings.Contains(cleanUA, "iPhone") {
+		iosVer := extractOSVersion("OS ", cleanUA)
+		if iosVer != "" {
+			deviceName = fmt.Sprintf("Apple iPhone (iOS %s)", iosVer)
+		} else {
+			deviceName = "Apple iPhone (iOS)"
+		}
+	} else if strings.Contains(cleanUA, "iPad") {
+		iosVer := extractOSVersion("OS ", cleanUA)
+		if iosVer != "" {
+			deviceName = fmt.Sprintf("Apple iPad (iPadOS %s)", iosVer)
+		} else {
+			deviceName = "Apple iPad (iPadOS)"
+		}
+	} else if strings.Contains(cleanUA, "Android") {
+		andVer := extractOSVersion("Android ", cleanUA)
+		model := extractAndroidDeviceModel(cleanUA)
+		if model != "" && andVer != "" {
+			deviceName = fmt.Sprintf("%s (Android %s)", model, andVer)
+		} else if andVer != "" {
+			deviceName = fmt.Sprintf("Android %s Device", andVer)
+		} else {
+			deviceName = "Android Mobile"
+		}
+	} else if strings.Contains(cleanUA, "Macintosh") || strings.Contains(cleanUA, "Mac OS X") {
+		macVer := extractOSVersion("Mac OS X ", cleanUA)
+		if macVer != "" {
+			macVer = strings.ReplaceAll(macVer, "_", ".")
+			deviceName = fmt.Sprintf("macOS (%s)", macVer)
+		} else {
+			deviceName = "Apple Mac (macOS)"
+		}
+	} else if strings.Contains(cleanUA, "Windows NT 10.0") {
+		if strings.Contains(cleanUA, "Win64; x64") || strings.Contains(cleanUA, "WOW64") {
+			deviceName = "Windows 10/11 (64-bit)"
+		} else {
+			deviceName = "Windows 10/11 PC"
+		}
+	} else if strings.Contains(cleanUA, "Windows NT 6.3") {
+		deviceName = "Windows 8.1 PC"
+	} else if strings.Contains(cleanUA, "Windows NT 6.1") {
+		deviceName = "Windows 7 PC"
+	} else if strings.Contains(cleanUA, "Windows") {
 		deviceName = "Windows PC"
-	} else if strings.Contains(ua, "Linux") {
+	} else if strings.Contains(cleanUA, "CrOS") {
+		deviceName = "Google Chromebook"
+	} else if strings.Contains(cleanUA, "Ubuntu") {
+		deviceName = "Ubuntu Linux"
+	} else if strings.Contains(cleanUA, "Debian") {
+		deviceName = "Debian Linux"
+	} else if strings.Contains(cleanUA, "Fedora") {
+		deviceName = "Fedora Linux"
+	} else if strings.Contains(cleanUA, "Linux") {
 		deviceName = "Linux Workstation"
 	} else {
 		deviceName = "Desktop Terminal"
 	}
 
 	return deviceName, browserName
+}
+
+func extractBrowserWithVersion(prefix, tag, ua string) string {
+	idx := strings.Index(ua, tag)
+	if idx == -1 {
+		return prefix
+	}
+	sub := ua[idx+len(tag):]
+	end := strings.IndexAny(sub, " \t;)(")
+	var ver string
+	if end != -1 {
+		ver = sub[:end]
+	} else {
+		ver = sub
+	}
+	ver = strings.TrimSpace(ver)
+	if ver != "" {
+		parts := strings.Split(ver, ".")
+		if len(parts) >= 2 {
+			ver = parts[0] + "." + parts[1]
+		}
+		return fmt.Sprintf("%s %s", prefix, ver)
+	}
+	return prefix
+}
+
+func extractOSVersion(tag, ua string) string {
+	idx := strings.Index(ua, tag)
+	if idx == -1 {
+		return ""
+	}
+	sub := ua[idx+len(tag):]
+	end := strings.IndexAny(sub, ";) ")
+	if end != -1 {
+		sub = sub[:end]
+	}
+	return strings.TrimSpace(strings.ReplaceAll(sub, "_", "."))
+}
+
+func extractAndroidDeviceModel(ua string) string {
+	idx := strings.Index(ua, "Android")
+	if idx == -1 {
+		return ""
+	}
+	sub := ua[idx:]
+	semiIdx := strings.Index(sub, ";")
+	if semiIdx == -1 {
+		return ""
+	}
+	afterSemi := sub[semiIdx+1:]
+	closeParen := strings.Index(afterSemi, ")")
+	if closeParen != -1 {
+		afterSemi = afterSemi[:closeParen]
+	}
+	buildIdx := strings.Index(afterSemi, "Build/")
+	if buildIdx != -1 {
+		afterSemi = afterSemi[:buildIdx]
+	}
+	model := strings.TrimSpace(afterSemi)
+	if len(model) > 25 {
+		model = model[:25]
+	}
+	return model
 }

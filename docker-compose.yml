@@ -1,4 +1,26 @@
 services:
+  genesis-service:
+    build:
+      context: ./genesis_service
+      dockerfile: Dockerfile
+    container_name: atheric_genesis_service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./BE/data:/app/data
+    environment:
+      - PORT=8000
+      - MARKET_DB_PATH=/app/data/idx_scraped_data.db
+    networks:
+      - atheric-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/health > /dev/null 2>&1 || wget -qO- http://127.0.0.1:8000/health > /dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
   backend:
     build:
       context: ./BE
@@ -13,16 +35,20 @@ services:
       - PORT=5000
       - DB_PATH=/app/data/atheric_app.db
       - MARKET_DB_PATH=/app/data/idx_scraped_data.db
+      - GENESIS_API_URL=http://genesis-service:8000
       - ALLOWED_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:80,http://127.0.0.1:5173
       - JWT_SECRET=${JWT_SECRET:-atheric_ai_super_secret_jwt_key_2026_change_in_prod}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-Atheric AI <onboarding@resend.dev>}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
+    depends_on:
+      genesis-service:
+        condition: service_healthy
     networks:
       - atheric-net
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:5000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/api/health > /dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3

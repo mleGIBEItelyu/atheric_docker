@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from "react"
 import { useAuth } from "@/context/AuthContext"
+import { useToast } from "@/components/common/Toast"
 
 type View = "login" | "register" | "otp"
 
 export function LoginPage() {
   const { login, register, verifyCode, resendCode } = useAuth()
+  const toast = useToast()
   const [view, setView] = useState<View>("login")
 
   const [username, setUsername] = useState("")
@@ -26,12 +28,19 @@ export function LoginPage() {
 
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const hasExpiredAlerted = useRef(false)
 
   useEffect(() => {
-    if (countdown <= 0) return
+    if (countdown <= 0) {
+      if (view === "otp" && !hasExpiredAlerted.current && otpEmail) {
+        hasExpiredAlerted.current = true
+        toast.error("Waktu Verifikasi Habis", "Batas waktu 1 menit telah berakhir. Akun belum aktif telah otomatis dihapus, silakan daftar ulang.")
+      }
+      return
+    }
     const t = setTimeout(() => setCountdown(c => c - 1), 1000)
     return () => clearTimeout(t)
-  }, [countdown])
+  }, [countdown, view, otpEmail, toast])
 
   function switchView(v: View) { setView(v); setError(null); setLoading(false) }
 
@@ -46,8 +55,10 @@ export function LoginPage() {
       setOtpEmail(res.email!)
       setDevCode(res.devCode ?? null)
       setCountdown(60)
+      hasExpiredAlerted.current = false
       setOtpDigits(["", "", "", "", "", ""])
       setView("otp")
+      toast.warning("Verifikasi Perangkat Diperlukan", "Kode 6 digit telah dikirim. Berlaku 1 menit.")
     } else if (!res.success) {
       setError(res.error || "Login gagal.")
     }
@@ -65,8 +76,16 @@ export function LoginPage() {
     const res = await register(regUser.trim(), regEmail.trim(), regPass)
     setLoading(false)
     if (res.success && res.needsVerification) {
-      setOtpEmail(res.email!); setDevCode(res.devCode ?? null)
-      setCountdown(60); setOtpDigits(["", "", "", "", "", ""]); setView("otp")
+      setOtpEmail(res.email!)
+      setDevCode(res.devCode ?? null)
+      setCountdown(60)
+      hasExpiredAlerted.current = false
+      setOtpDigits(["", "", "", "", "", ""])
+      setView("otp")
+      toast.warning(
+        "Verifikasi Dalam 1 Menit",
+        "Kode OTP telah dikirim ke email. Akun akan otomatis dihapus jika tidak diverifikasi dalam 1 menit."
+      )
     } else if (!res.success) setError(res.error || "Registrasi gagal.")
   }
 
@@ -100,8 +119,14 @@ export function LoginPage() {
   async function handleResend() {
     if (countdown > 0) return; setError(null)
     const res = await resendCode(otpEmail)
-    if (res.success) { setCountdown(60); setDevCode(null) }
-    else setError(res.error || "Gagal mengirim ulang kode.")
+    if (res.success) {
+      setCountdown(60)
+      hasExpiredAlerted.current = false
+      setDevCode(null)
+      toast.info("Kode Baru Dikirim", "Kode verifikasi 6 digit baru berlaku selama 1 menit.")
+    } else {
+      setError(res.error || "Gagal mengirim ulang kode.")
+    }
   }
 
   const inp: React.CSSProperties = {
@@ -160,6 +185,13 @@ export function LoginPage() {
                 <div style={{ fontSize: "13px", color: "var(--text-dim)", lineHeight: 1.6 }}>
                   Kode 6-digit dikirim ke <strong style={{ color: "var(--text)" }}>{otpEmail}</strong>
                 </div>
+                <div style={{ marginTop: "6px", fontSize: "11.5px", color: countdown > 0 ? "#f59e0b" : "#ef4444", fontWeight: 600 }}>
+                  {countdown > 0 ? (
+                    `⏱️ Batas waktu verifikasi: ${countdown}s (Akun otomatis dibatalkan jika melebihi 1 menit)`
+                  ) : (
+                    "⚠️ Waktu 1 menit telah habis. Akun belum verifikasi otomatis dihapus dari DB."
+                  )}
+                </div>
                 {devCode && (
                   <div style={{ marginTop: "10px", padding: "8px 12px", background: "rgba(255,180,0,0.12)", border: "1px solid rgba(255,180,0,0.3)", borderRadius: "var(--radius-sm)", fontSize: "12px", color: "#f5a623", display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
                     <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
@@ -179,7 +211,7 @@ export function LoginPage() {
                     onKeyDown={e => handleOtpKeyDown(i, e)} autoFocus={i === 0} />
                 ))}
               </div>
-              <button type="submit" className="at-sub" disabled={loading}>
+              <button type="submit" className="at-sub" disabled={loading || countdown === 0}>
                 {loading ? "Memverifikasi..." : "Verifikasi & Masuk"}
               </button>
               <div style={{ textAlign: "center", fontSize: "13px", color: "var(--text-dim)" }}>

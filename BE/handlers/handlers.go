@@ -243,7 +243,7 @@ func Register(c *fiber.Ctx) error {
 				return c.Status(500).JSON(fiber.Map{"error": "Gagal memproses password"})
 			}
 			otpCode := services.GenerateOTP()
-			expiresAt := time.Now().Add(15 * time.Minute)
+			expiresAt := time.Now().Add(1 * time.Minute)
 
 			existing.Username = req.Username
 			existing.Email = req.Email
@@ -256,8 +256,20 @@ func Register(c *fiber.Ctx) error {
 			_ = services.SendVerificationEmail(req.Email, otpCode)
 			services.RecordActivity(c, existing.ID, existing.Username, "USER", "REGISTER_RETRY", "Pendaftaran ulang akun belum verifikasi via email "+req.Email)
 
+			// Auto-delete if not verified within 1 minute
+			go func(uid uint, email string) {
+				time.Sleep(1 * time.Minute)
+				var u models.User
+				if err := database.DB.First(&u, uid).Error; err == nil {
+					if !u.IsVerified {
+						database.DB.Unscoped().Delete(&u)
+						log.Printf("[AUTH] Unverified registration for %s (%s, ID: %d) expired after 1 minute and was auto-deleted from database.", u.Username, email, uid)
+					}
+				}
+			}(existing.ID, existing.Email)
+
 			return c.JSON(fiber.Map{
-				"message": "Pendaftaran diperbarui! Kode verifikasi 6 digit baru telah dikirimkan ke email Anda.",
+				"message": "Pendaftaran diperbarui! Kode verifikasi 6 digit baru telah dikirimkan ke email Anda (berlaku 1 menit).",
 				"email":   req.Email,
 			})
 		}
@@ -270,7 +282,7 @@ func Register(c *fiber.Ctx) error {
 	}
 
 	otpCode := services.GenerateOTP()
-	expiresAt := time.Now().Add(15 * time.Minute)
+	expiresAt := time.Now().Add(1 * time.Minute)
 
 	newUser := models.User{
 		ID:               uint(100000 + rand.Intn(899999)),
@@ -292,8 +304,20 @@ func Register(c *fiber.Ctx) error {
 	_ = services.SendVerificationEmail(req.Email, otpCode)
 	services.RecordActivity(c, newUser.ID, newUser.Username, "USER", "REGISTER", "Pendaftaran akun baru via email "+req.Email)
 
+	// Auto-delete if not verified within 1 minute
+	go func(uid uint, email string) {
+		time.Sleep(1 * time.Minute)
+		var u models.User
+		if err := database.DB.First(&u, uid).Error; err == nil {
+			if !u.IsVerified {
+				database.DB.Unscoped().Delete(&u)
+				log.Printf("[AUTH] Unverified registration for %s (%s, ID: %d) expired after 1 minute and was auto-deleted from database.", u.Username, email, uid)
+			}
+		}
+	}(newUser.ID, newUser.Email)
+
 	return c.JSON(fiber.Map{
-		"message": "Pendaftaran berhasil! Kode verifikasi 6 digit telah dikirimkan ke email Anda.",
+		"message": "Pendaftaran berhasil! Kode verifikasi 6 digit telah dikirimkan ke email Anda (berlaku 1 menit).",
 		"email":   req.Email,
 	})
 }
@@ -319,15 +343,18 @@ func VerifyEmailCode(c *fiber.Ctx) error {
 
 	var user models.User
 	if err := database.DB.Where("email = ?", req.Email).First(&user).Error; err != nil {
-		return c.Status(404).JSON(fiber.Map{"error": "Pengguna dengan email ini tidak ditemukan."})
+		return c.Status(404).JSON(fiber.Map{"error": "Pengguna dengan email ini tidak ditemukan atau waktu verifikasi telah kedaluwarsa. Silakan registrasi ulang."})
+	}
+
+	if user.CodeExpiresAt != nil && time.Now().After(*user.CodeExpiresAt) {
+		if !user.IsVerified {
+			database.DB.Unscoped().Delete(&user)
+			return c.Status(400).JSON(fiber.Map{"error": "Batas waktu verifikasi 1 menit telah habis. Akun belum aktif telah dihapus otomatis, silakan registrasi ulang."})
+		}
 	}
 
 	if user.VerificationCode == "" || user.VerificationCode != req.Code {
 		return c.Status(400).JSON(fiber.Map{"error": "Kode verifikasi salah. Silakan periksa kembali email Anda."})
-	}
-
-	if user.CodeExpiresAt != nil && time.Now().After(*user.CodeExpiresAt) {
-		return c.Status(400).JSON(fiber.Map{"error": "Kode verifikasi telah kadaluarsa. Silakan kirim ulang kode baru."})
 	}
 
 	// Update verification status & clear code
@@ -415,7 +442,7 @@ func ResendVerificationCode(c *fiber.Ctx) error {
 	}
 
 	otpCode := services.GenerateOTP()
-	expiresAt := time.Now().Add(15 * time.Minute)
+	expiresAt := time.Now().Add(1 * time.Minute)
 
 	user.VerificationCode = otpCode
 	user.CodeExpiresAt = &expiresAt
@@ -423,8 +450,20 @@ func ResendVerificationCode(c *fiber.Ctx) error {
 
 	_ = services.SendVerificationEmail(req.Email, otpCode)
 
+	// Auto-delete unverified user if 1 minute timer elapses without verification
+	go func(uid uint, email string) {
+		time.Sleep(1 * time.Minute)
+		var u models.User
+		if err := database.DB.First(&u, uid).Error; err == nil {
+			if !u.IsVerified {
+				database.DB.Unscoped().Delete(&u)
+				log.Printf("[AUTH] Unverified resend for %s (%s, ID: %d) expired after 1 minute and was auto-deleted from database.", u.Username, email, uid)
+			}
+		}
+	}(user.ID, user.Email)
+
 	return c.JSON(fiber.Map{
-		"message": "Kode verifikasi baru telah dikirimkan ke email Anda.",
+		"message": "Kode verifikasi baru telah dikirimkan ke email Anda (berlaku 1 menit).",
 	})
 }
 
@@ -633,10 +672,75 @@ func GetNews(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to fetch news"})
 	}
 
+	// Auto-populate news if empty for this ticker
+	if len(news) == 0 && ticker != "" {
+		generatedNews := generateTickerNews(ticker)
+		for i := range generatedNews {
+			database.DB.Create(&generatedNews[i])
+		}
+		news = generatedNews
+	}
+
 	return c.JSON(fiber.Map{
 		"ticker": ticker,
 		"news":   news,
 	})
+}
+
+// generateTickerNews dynamically generates contextual news articles for any IDX ticker
+func generateTickerNews(ticker string) []models.News {
+	now := time.Now()
+	nowTimeStr := now.Format("15:04")
+
+	var stock models.Stock
+	database.DB.Where("ticker = ?", ticker).First(&stock)
+	name := stock.Name
+	if name == "" {
+		name = ticker
+	}
+	category := stock.Category
+	if category == "" {
+		category = "Emiten Saham IDX"
+	}
+
+	return []models.News{
+		{
+			Ticker:    ticker,
+			Title:     fmt.Sprintf("%s (%s) Rilis Laporan Kinerja Finansial & Prospek Bisnis Sektor %s", name, ticker, category),
+			Source:    "Bisnis.com",
+			Time:      nowTimeStr,
+			Impact:    "High +",
+			Url:       "https://bisnis.com",
+			CreatedAt: now,
+		},
+		{
+			Ticker:    ticker,
+			Title:     fmt.Sprintf("Analis Pasar Soroti Valuasi & Potensi Arus Modal Asing Masuk ke Saham %s", ticker),
+			Source:    "Kontan",
+			Time:      now.Add(-45 * time.Minute).Format("15:04"),
+			Impact:    "Medium",
+			Url:       "https://kontan.co.id",
+			CreatedAt: now.Add(-45 * time.Minute),
+		},
+		{
+			Ticker:    ticker,
+			Title:     fmt.Sprintf("Strategi Ekspansi %s di Tengah Fluktuasi Pasar Modal Indonesia", ticker),
+			Source:    "CNBC Indonesia",
+			Time:      now.Add(-2 * time.Hour).Format("15:04"),
+			Impact:    "High +",
+			Url:       "https://cnbcindonesia.com",
+			CreatedAt: now.Add(-2 * time.Hour),
+		},
+		{
+			Ticker:    ticker,
+			Title:     fmt.Sprintf("Volume Transaksi %s Meningkat Didorong Aksi Beli Investor Institusi", ticker),
+			Source:    "Investor Daily",
+			Time:      now.Add(-4 * time.Hour).Format("15:04"),
+			Impact:    "Medium",
+			Url:       "https://investor.id",
+			CreatedAt: now.Add(-4 * time.Hour),
+		},
+	}
 }
 
 // GetUserSettings returns setting configuration for the authenticated user
@@ -1537,13 +1641,33 @@ func UpdateUserDetailsByAdmin(c *fiber.Ctx) error {
 	return c.JSON(user)
 }
 
-// GetActivityLogsByAdmin lists all audit activity logs for Admin Portal (Read-only)
+// GetActivityLogsByAdmin lists all audit activity logs for Admin Portal with enriched device, browser, and location info
 func GetActivityLogsByAdmin(c *fiber.Ctx) error {
 	var logs []models.ActivityLog
 	if err := database.DB.Order("id desc").Limit(200).Find(&logs).Error; err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "Gagal mengambil log aktivitas"})
 	}
-	return c.JSON(logs)
+
+	type EnrichedActivityLog struct {
+		models.ActivityLog
+		DeviceName  string `json:"deviceName"`
+		BrowserName string `json:"browserName"`
+		Location    string `json:"location"`
+	}
+
+	enriched := make([]EnrichedActivityLog, len(logs))
+	for i, l := range logs {
+		dev, br := services.ParseUserAgent(l.UserAgent)
+		loc := services.ResolveIPLocation(l.IP).Formatted
+		enriched[i] = EnrichedActivityLog{
+			ActivityLog: l,
+			DeviceName:  dev,
+			BrowserName: br,
+			Location:    loc,
+		}
+	}
+
+	return c.JSON(enriched)
 }
 
 // --- MONITOR & WEBSOCKET HANDLERS ---

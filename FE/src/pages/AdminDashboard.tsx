@@ -12,6 +12,9 @@ interface AdminActivityLog {
   details: string
   ip: string
   userAgent: string
+  deviceName?: string
+  browserName?: string
+  location?: string
   createdAt: string
 }
 
@@ -159,12 +162,12 @@ function ReactTrafficChart({ data }: { data: number[] }) {
     )
   }
 
-  const W = 800
+  const W = 1000
   const H = 160
-  const padLeft = 45
-  const padRight = 20
-  const padTop = 15
-  const padBottom = 28
+  const padLeft = 32
+  const padRight = 8
+  const padTop = 14
+  const padBottom = 26
 
   const chartW = W - padLeft - padRight
   const chartH = H - padTop - padBottom
@@ -212,6 +215,7 @@ function ReactTrafficChart({ data }: { data: number[] }) {
     >
       <svg
         viewBox={`0 0 ${W} ${H}`}
+        preserveAspectRatio="none"
         style={{ width: "100%", height: "180px", overflow: "visible", display: "block" }}
         onMouseMove={e => {
           const rect = e.currentTarget.getBoundingClientRect()
@@ -230,8 +234,8 @@ function ReactTrafficChart({ data }: { data: number[] }) {
       >
         <defs>
           <linearGradient id="reactTrafficGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.14" />
-            <stop offset="60%" stopColor="#94a3b8" stopOpacity="0.03" />
+            <stop offset="0%" stopColor="#94a3b8" stopOpacity="0.16" />
+            <stop offset="60%" stopColor="#94a3b8" stopOpacity="0.04" />
             <stop offset="100%" stopColor="#94a3b8" stopOpacity="0" />
           </linearGradient>
         </defs>
@@ -246,7 +250,7 @@ function ReactTrafficChart({ data }: { data: number[] }) {
                 stroke="rgba(255,255,255,0.06)" strokeDasharray={idx === 0 ? "none" : "3 3"} strokeWidth="1"
               />
               <text
-                x={padLeft - 8} y={y + 3.5}
+                x={padLeft - 6} y={y + 3.5}
                 fill="var(--text-dim)" fontSize="10" textAnchor="end" fontFamily="monospace"
               >
                 {Math.round(lvl)}
@@ -1171,10 +1175,10 @@ function ActivityLogsTab() {
         maxWidth: "100%",
         display: "block",
       }}>
-        <table style={{ width: "100%", minWidth: "750px", borderCollapse: "collapse", fontSize: "13px" }}>
+        <table style={{ width: "100%", minWidth: "900px", borderCollapse: "collapse", fontSize: "13px" }}>
           <thead>
             <tr style={{ borderBottom: "1px solid var(--border)", background: "rgba(255,255,255,0.02)" }}>
-              {["Waktu", "User", "Role", "Jenis Aksi", "Detail Aktivitas", "IP Address"].map(h => (
+              {["Waktu", "User", "Role", "Jenis Aksi", "Detail Aktivitas", "Perangkat / OS", "Browser", "IP & Lokasi"].map(h => (
                 <th key={h} style={{ padding: "12px 14px", textAlign: "left", fontWeight: 700, color: "var(--text-dim)", fontSize: "11px", textTransform: "uppercase", letterSpacing: ".04em", whiteSpace: "nowrap" }}>{h}</th>
               ))}
             </tr>
@@ -1182,7 +1186,7 @@ function ActivityLogsTab() {
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={6} style={{ padding: "32px", textAlign: "center", color: "var(--text-dim)" }}>
+                <td colSpan={8} style={{ padding: "32px", textAlign: "center", color: "var(--text-dim)" }}>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
                     <div style={{ width: 14, height: 14, border: "2px solid var(--blue)", borderTopColor: "transparent", borderRadius: "50%", animation: "spinRotate 0.6s linear infinite" }} />
                     Memuat log aktivitas...
@@ -1190,7 +1194,7 @@ function ActivityLogsTab() {
                 </td>
               </tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} style={{ padding: "32px", textAlign: "center", color: "var(--text-dim)" }}>Belum ada log aktivitas tercatat.</td></tr>
+              <tr><td colSpan={8} style={{ padding: "32px", textAlign: "center", color: "var(--text-dim)" }}>Belum ada log aktivitas tercatat.</td></tr>
             ) : filtered.map((l, idx) => (
               <tr key={l.id} style={{ borderBottom: "1px solid var(--border)", background: idx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)" }}>
                 <td style={{ padding: "12px 14px", color: "var(--text-dim)", whiteSpace: "nowrap" }}>
@@ -1202,7 +1206,22 @@ function ActivityLogsTab() {
                 </td>
                 <td style={{ padding: "12px 14px" }}>{getActionBadge(l.action)}</td>
                 <td style={{ padding: "12px 14px", color: "var(--text)", lineHeight: 1.4 }}>{l.details}</td>
-                <td style={{ padding: "12px 14px", color: "var(--text-dim)", fontFamily: "monospace", fontSize: "12px" }}>{l.ip}</td>
+                <td style={{ padding: "12px 14px", color: "var(--text)", whiteSpace: "nowrap" }}>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.04)", padding: "3px 8px", borderRadius: "6px", border: "1px solid var(--border)", fontSize: "11.5px" }}>
+                    <span>💻</span>
+                    <span>{l.deviceName || "Desktop PC"}</span>
+                  </div>
+                </td>
+                <td style={{ padding: "12px 14px", color: "var(--text)", whiteSpace: "nowrap" }}>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(96,165,250,0.08)", color: "#60a5fa", padding: "3px 8px", borderRadius: "6px", border: "1px solid rgba(96,165,250,0.2)", fontSize: "11.5px" }}>
+                    <span>🌐</span>
+                    <span>{l.browserName || "Web Browser"}</span>
+                  </div>
+                </td>
+                <td style={{ padding: "12px 14px", color: "var(--text-dim)", whiteSpace: "nowrap" }}>
+                  <div style={{ fontFamily: "monospace", fontSize: "12px", color: "var(--text)" }}>{l.ip}</div>
+                  {l.location && <div style={{ fontSize: "11px", color: "var(--text-dim)", marginTop: "2px" }}>📍 {l.location}</div>}
+                </td>
               </tr>
             ))}
           </tbody>

@@ -6,12 +6,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"atheric-be/models"
 
 	"github.com/glebarez/sqlite"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 var (
@@ -32,8 +34,19 @@ func InitDB() *gorm.DB {
 		log.Fatalf("Failed to create database directory: %v", err)
 	}
 
+	gormLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags),
+		logger.Config{
+			SlowThreshold:             500 * time.Millisecond,
+			LogLevel:                  logger.Warn,
+			IgnoreRecordNotFoundError: true,
+			Colorful:                  false,
+		},
+	)
+
 	db, err := gorm.Open(sqlite.Open(appDBPath), &gorm.Config{
 		PrepareStmt: true,
+		Logger:      gormLogger,
 	})
 	if err != nil {
 		log.Fatalf("Failed to connect App Database (%s): %v", appDBPath, err)
@@ -75,10 +88,28 @@ func InitDB() *gorm.DB {
 	DB = db
 	seedInitialData(db)
 
-	// 2. Initialize MarketDB (Scraped Data & ML Store from TrainerProduksiML)
+	// 2. Start unverified registration auto-purger (cleans up registrations older than 30s)
+	go startUnverifiedUserSweeper(db)
+
+	// 3. Initialize MarketDB (Scraped Data & ML Store from TrainerProduksiML)
 	initMarketDB(db)
 
 	return db
+}
+
+// startUnverifiedUserSweeper periodically purges unverified registrations after 1 minute
+func startUnverifiedUserSweeper(db *gorm.DB) {
+	ticker := time.NewTicker(15 * time.Second)
+	for range ticker.C {
+		cutoff := time.Now().Add(-1 * time.Minute)
+		var expired []models.User
+		if err := db.Where("is_verified = ? AND (code_expires_at < ? OR created_at < ?)", false, time.Now(), cutoff).Find(&expired).Error; err == nil && len(expired) > 0 {
+			for _, u := range expired {
+				db.Unscoped().Delete(&u)
+				log.Printf("[AUTH SWEEPER] Auto-purged unverified user '%s' (ID: %d) after 1 minute expiration", u.Username, u.ID)
+			}
+		}
+	}
 }
 
 // initMarketDB connects to Market Data SQLite store and synchronizes stocks to AppDB
@@ -99,6 +130,15 @@ func initMarketDB(appDB *gorm.DB) {
 		if _, err := os.Stat(p); err == nil {
 			mDB, err := gorm.Open(sqlite.Open(p), &gorm.Config{
 				PrepareStmt: true,
+				Logger: logger.New(
+					log.New(os.Stdout, "\r\n", log.LstdFlags),
+					logger.Config{
+						SlowThreshold:             500 * time.Millisecond,
+						LogLevel:                  logger.Warn,
+						IgnoreRecordNotFoundError: true,
+						Colorful:                  false,
+					},
+				),
 			})
 			if err == nil {
 				mDB.Exec("PRAGMA query_only = ON;") // Read-only safety on market scraped store

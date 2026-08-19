@@ -22,14 +22,33 @@ func GetRealClientIP(c *fiber.Ctx) string {
 		return cfIP
 	}
 
-	// 2. X-Real-IP header (Nginx / Reverse Proxies)
+	// 2. True-Client-IP / Fastly-Client-IP
+	if trueIP := strings.TrimSpace(c.Get("True-Client-IP")); trueIP != "" {
+		return trueIP
+	}
+	if fastlyIP := strings.TrimSpace(c.Get("Fastly-Client-IP")); fastlyIP != "" {
+		return fastlyIP
+	}
+
+	// 3. X-Real-IP header (Nginx / Reverse Proxies)
 	if realIP := strings.TrimSpace(c.Get("X-Real-IP")); realIP != "" {
 		return realIP
 	}
 
-	// 3. X-Forwarded-For header (Comma-separated client IPs: first IP is original client)
+	// 4. X-Client-IP
+	if clientIP := strings.TrimSpace(c.Get("X-Client-IP")); clientIP != "" {
+		return clientIP
+	}
+
+	// 5. X-Forwarded-For header (Comma-separated client IPs: first non-private IP or first IP is original client)
 	if xff := strings.TrimSpace(c.Get("X-Forwarded-For")); xff != "" {
 		parts := strings.Split(xff, ",")
+		for _, p := range parts {
+			cleanP := strings.TrimSpace(p)
+			if cleanP != "" && !IsPrivateIP(cleanP) {
+				return cleanP
+			}
+		}
 		if len(parts) > 0 {
 			ip := strings.TrimSpace(parts[0])
 			if ip != "" {
@@ -38,7 +57,7 @@ func GetRealClientIP(c *fiber.Ctx) string {
 		}
 	}
 
-	// 4. Fallback to direct connection IP
+	// 6. Fallback to direct connection IP
 	ip := c.IP()
 	if ip == "" || ip == "::1" {
 		return "127.0.0.1"
@@ -52,8 +71,8 @@ func RecordActivity(c *fiber.Ctx, userID uint, username, role, action, details s
 	ua := ""
 	if c != nil {
 		ua = c.Get("User-Agent")
-		if len(ua) > 255 {
-			ua = ua[:255]
+		if len(ua) > 512 {
+			ua = ua[:512]
 		}
 	}
 

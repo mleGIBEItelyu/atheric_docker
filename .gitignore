@@ -14,14 +14,37 @@ bin/
 *.so
 *.dylib
 
+# Python & Virtualenv
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+.pytest_cache/
+.coverage
+
 # Database files
+BE/data/*.db
+BE/data/*.db-shm
+BE/data/*.db-wal
+BE/data/*.db-journal
 BE/data/
-data/
-*.db
+data/*.db
+data/*.db-shm
+data/*.db-wal
 *.db-shm
 *.db-wal
-data/*.db-journal
 *.db-journal
+
+# ML Large Training Workspace (Local only - artifacts synced to genesis_service)
+TrainerProduksiML/
+*.parquet
+*.feather
+*.tar.gz
 
 # Logs
 *.log
@@ -32,5 +55,3 @@ yarn-debug.log*
 .DS_Store
 .vscode/
 .idea/
-genesis/
-TrainerProduksiML/

@@ -1,0 +1,309 @@
+# =============================================================================
+# Atheric Engine -- modeling configuration (normalization → backtest → forecast)
+#
+# ONE model (LSTM+attention sequence encoder), TWO output heads sharing the
+# same backbone:
+#   - rank      : cross-sectional rank of excess return (trained vs label_rank,
+#                 pearson-correlation loss) → drives the 1..100 ranking.
+#   - direction : raw forward return magnitude (trained vs fwd_ret, weighted
+#                 MSE) → drives pred_return + the Bullish/Bearish/Netral
+#                 signal. Never affects the ranking.
+# A single shared backbone (rather than two independent models) means both
+# outputs are derived from the same internal representation, which is what
+# keeps them from pointing in contradictory directions.
+#
+# A second tabular model (LightGBM) was evaluated extensively (see git
+# history / Engine/README.md "Riwayat tuning") and consistently ranked worse
+# than the sequence model in every controlled test -- removed to avoid
+# maintaining two model families for no measurable benefit.
+#
+# Every tunable lives here. Code must not hardcode columns, windows,
+# thresholds, or file locations.
+# =============================================================================
+
+project:
+  name: atheric-engine
+  seed: 42
+
+# -----------------------------------------------------------------------------
+# Compute -- Keras 3 is multi-backend; TensorFlow has no native-Windows GPU
+# support (>= 2.11), so GPU training goes through the torch backend + CUDA.
+# -----------------------------------------------------------------------------
+compute:
+  keras_backend: torch             # torch (GPU via CUDA) | tensorflow (CPU-only on Windows)
+  device: auto                     # auto = GPU if available, else CPU
+
+# -----------------------------------------------------------------------------
+# Storage -- the engine READS its input datasets (main_dataset, sentimen) from
+# the same store the data pipeline (Produksi/data) writes to. Credentials for
+# Postgres come ONLY from the environment (DATABASE_URL) loaded from
+# Produksi/.env -- nothing sensitive is in this file.
+#   backend: postgres | sqlite | auto  (auto = postgres if DATABASE_URL present)
+# -----------------------------------------------------------------------------
+storage:
+  backend: sqlite
+  sqlite_path: atheric.db    # relatif ke root TrainerProduksiML/ → file yang sama dengan data pipeline
+  write_chunksize: 5000
+
+paths:
+  # Engine-internal artifacts (relative to repo root = parent of engine/)
+  cache_dir: engine/cache
+  artifacts_dir: engine/artifacts
+  reports_dir: engine/reports
+  forecasts_dir: engine/reports/forecasts
+  log_dir: engine/logs
+
+# -----------------------------------------------------------------------------
+# Data panel: universe filter + auxiliary columns kept out of the feature set
+# -----------------------------------------------------------------------------
+data:
+  main_dataset_table: main_dataset   # store table written by the data pipeline
+  start_date: "2005-01-01"        # drop earlier rows (thin universe)
+  min_stocks_per_date: 15         # drop dates with fewer names than this
+  require_liquid_for_training: true   # train/backtest only on is_liquid == 1
+  aux_columns: [date, ticker, close, raw_close, is_liquid, sector]
+
+# -----------------------------------------------------------------------------
+# Labeling -- excess return t+20 (rank head target) + raw forward return
+# (direction head target)
+# -----------------------------------------------------------------------------
+labeling:
+  horizon_days: 20                # forward trading days (~1 bulan)
+  # excess = fwd_ret(stock) - cross-sectional mean fwd_ret (same date)
+  min_names_per_date: 15          # need this many names to form the cross-section
+  target: label_rank              # rank head target: bounded 0..1, immune to skew/kurtosis
+  winsorize_target_quantiles: [0.02, 0.98]     # clip label_rank tails (fit on train)
+  # label_excess / fwd_ret are heavy-tailed (skew~9, kurtosis~440 pre-clip);
+  # this tighter, dedicated clip applies to both (fwd_ret is the direction
+  # head's raw-return target).
+  winsorize_return_quantiles: [0.02, 0.98]
+
+# -----------------------------------------------------------------------------
+# Feature selection (regex on column names; applied in order: include → exclude)
+# -----------------------------------------------------------------------------
+features:
+  # Model C is TECHNICAL-only. The data pipeline (Produksi/data) writes ONLY
+  # price/volume/technical columns to main_dataset -- no fundamental, macro, or
+  # sentiment features exist to select. (History: those modalities were tested
+  # and validated to add no value / to hurt cross-sectional ranking; they were
+  # dropped from both the data pipeline and this config.)
+  include_patterns:
+    - "^ret_\\d+d$"
+    - "^macd_hist_pct$"
+    - "^price_sma\\d+_ratio$"
+    - "^volume_ratio$"
+    - "^obv_slope_20d$"
+    - "^mfi_14$"
+    - "^rsi_14$"
+    - "^dist_52w_high$"
+    - "^close_pos_20d$"
+    - "^gap_open$"
+    - "^atr_ratio_14$"
+    - "^realized_vol_20d$"
+    - "^vol_ratio_5_60$"
+    - "^bollinger_pctb$"
+    - "^window_dressing_flag$"
+    - ".*_cs_z$"                    # cross-sectional z-scores (per-date)
+    - "^ret_20d_over_vol$|^rsi_divergence$|^vol_compression$"   # engineered
+  exclude_patterns:
+    - "^(open|high|low|close|raw_close|volume|turnover_idr)$"   # non-comparable levels
+  categorical: [sector]
+  max_nan_frac: 0.65               # drop features with >65% NaN
+
+# -----------------------------------------------------------------------------
+# Normalization -- "fit di train saja"
+# cross_sectional: per-date winsorize + z-score (point-in-time by construction)
+# train_robust   : median/IQR fit on TRAIN rows only, applied to val/test
+# -----------------------------------------------------------------------------
+normalization:
+  cross_sectional_patterns:        # stock-level features → per-date z-score
+    - "^ret_\\d+d$"
+    - "^macd_hist_pct$"
+    - "^price_sma\\d+_ratio$"
+    - "^volume_ratio$"
+    - "^obv_slope_20d$"
+    - "^mfi_14$|^rsi_14$"
+    - "^dist_52w_high$|^close_pos_20d$|^gap_open$"
+    - "^atr_ratio_14$|^realized_vol_20d$|^vol_ratio_5_60$|^bollinger_pctb$"
+    - "^ret_20d_over_vol$|^rsi_divergence$|^vol_compression$"
+  # everything else (calendar flags, *_cs_z which are already z-scored) →
+  # train_robust scaling (median/IQR fit on train only).
+  winsorize_quantiles: [0.01, 0.99]
+  clip_after_scale: 8.0            # hard clip of scaled values
+  min_names_for_cs: 10             # skip cs-z on dates with fewer names
+
+# -----------------------------------------------------------------------------
+# Purged walk-forward + embargo
+# -----------------------------------------------------------------------------
+splits:
+  n_folds: 6
+  test_span_trading_days: 252      # ~1 year OOS per fold
+  min_train_trading_days: 1500     # ~6 years minimum history
+  purge_days: 20                   # = label horizon (drop overlap)
+  embargo_days: 10                 # extra gap after purge
+  inner_val_frac: 0.12             # tail of train used for early stopping
+
+# -----------------------------------------------------------------------------
+# Release versioning. Every ``finalize`` run copies the resulting final
+# ensemble + scaler + metrics + config into an immutable
+# artifacts/releases/<name>/ folder -- a later retrain overwrites the mutable
+# artifacts/model_c/final_*.keras working files but can NEVER touch a past
+# release. Name = base_name + auto-incrementing version (Genesis2.0, then
+# Genesis2.1, …), derived by scanning existing releases, never hardcoded.
+# -----------------------------------------------------------------------------
+model:
+  release:
+    enabled: true
+    base_name: Genesis2
+
+# -----------------------------------------------------------------------------
+# Model C -- v2: cross-sectional (market) transformer.
+# A per-stock temporal encoder, but stocks of one date
+# then ATTEND TO EACH OTHER (multi-head self-attention over the ~100 stock
+# tokens) before ranking -- the architecture class (MASTER/TRA/HIST, qlib
+# benchmarks) that consistently beats isolated per-stock models on exactly
+# this task. Training batches are DATES (bags of stocks), which also makes
+# the pearson rank loss exact per date instead of mixed-date approximate.
+# -----------------------------------------------------------------------------
+model_c:
+  sequence:                        # technical price-action channels;
+    window: 120                    # controlled comparison: same inputs,
+    channels:                      # different architecture
+      - "derived:r1d_excess"
+      - volume_ratio
+      - gap_open
+      - atr_ratio_14
+      - rsi_14
+      - bollinger_pctb
+      - realized_vol_20d
+      - "derived:mkt_r1d"
+      - "derived:mkt_vol20"
+    r1d_clip: 0.35
+    market_vol_window: 20
+  tabular_patterns:                # dense, low-NaN technical subset for fusion
+    - ".*_cs_z$"
+    - "^rsi_14$|^mfi_14$|^bollinger_pctb$|^dist_52w_high$"
+    - "^ret_20d_over_vol$|^rsi_divergence$|^vol_compression$"
+  max_nan_frac: 0.40
+  # stride in TRADING DAYS between training dates. Model C's sample unit is
+  # a whole date (~75-100 stocks), so stride 10 would leave only ~300
+  # samples/fold; 2 gives ~1500 date-samples (~150k stock-rows equivalent)
+  # while purge/embargo still guard label leakage across the fold boundary.
+  train_sample_stride_days: 2
+  # minimum stock-axis pad width. Training rows are liquid-only (< full
+  # universe per date) but the deployed model must score ALL names at
+  # forecast time -- pad to the universe size so no graph rebuild is needed.
+  pad_stocks: 100
+  architecture:
+    temporal_units: 48             # shared LSTM encoder per stock
+    tabular_dense: 32
+    d_model: 64                    # stock-token width
+    attn_heads: 4
+    attn_blocks: 1                 # transformer encoder blocks across stocks
+    head_dense: 64
+    direction_head_dense: 32
+    dropout: 0.20
+    # Gradient-isolate the direction head (stop_gradient before its branch):
+    # auxiliary-task gradients degrading the main task is a documented
+    # failure mode (PCGrad NeurIPS'20, ForkMerge NeurIPS'23) and was measured
+    # here directly (direction weight 1.0 cost rank IC 0.0232->0.0197 on v1).
+    # With detach the backbone is optimized PURELY for ranking; the direction
+    # head reads (never reshapes) that representation, plus the detached rank
+    # score itself as an input -- keeping the two outputs coherent.
+    detach_direction: true
+    # Dedicated raw-sequence LSTM for the direction head (trained by the
+    # direction loss ONLY -- cannot touch the rank backbone). Needed because
+    # a detached rank-only representation deliberately discards the market
+    # level, which is the dominant component of ABSOLUTE forward returns;
+    # without this path the direction head's val calibration slopes
+    # collapsed to b≈0.01-0.26 (no signal).
+    direction_temporal_units: 24
+  # Post-hoc linear calibration of pred_return: fit (a, b) on the fold's
+  # held-out VALIDATION predictions (PIT-safe, never on test), apply to
+  # test/forecast. Fixes the MSE head's systematic shrink-toward-zero and
+  # era bias without changing prediction ORDER (b > 0 guard), so it cannot
+  # corrupt the signal -- it re-expresses it in honest return units.
+  calibration:
+    enabled: true
+    min_val_rows: 200              # below this, fall back to mean-shift only
+  heads:                           # two-head contract: rank + direction
+    rank:
+      loss: pearson                # per-DATE masked pearson (exact rank IC)
+      weight: 1.0
+    direction:
+      loss: mse
+      weight: 0.5
+      # rank_signed (2026-07-11): signal = RANK tercile + sign guard from
+      # pred_return. Fixes two artifacts of pure pred_return quantiles a
+      # user immediately spotted: a POSITIVE pred_return labeled "Bearish"
+      # (bottom tercile of a bullish day), and a top-RANKED stock labeled
+      # Bearish (within-date pred_return order partly driven by direction
+      # noise). With rank_signed: Bullish = top-33% rank AND pred>0,
+      # Bearish = bottom-33% rank AND pred<0, else Netral -- signal can
+      # contradict neither the ranking nor its own number. Bucket counts
+      # become regime-dependent on purpose (few Bearish in a rally).
+      threshold_mode: rank_signed
+      quantile_frac: 0.33
+      bullish_threshold: 0.01      # only used when threshold_mode: fixed
+      bearish_threshold: -0.01
+  training:
+    batch_dates: 32                # batch unit = dates (bags of stocks)
+    max_epochs: 80
+    patience: 10
+    learning_rate: 0.001
+    n_seeds: 3
+    time_decay_half_life_years: 6
+
+# -----------------------------------------------------------------------------
+# Backtest -- portfolio simulation with IDX cost model
+# -----------------------------------------------------------------------------
+backtest:
+  initial_capital: 25000000        # Rp -- starting capital for the equity curve
+  # Position count. top_frac (fraction of the eligible universe) takes
+  # precedence over top_k. 0.20 = a top-quintile long book, the standard
+  # cross-sectional portfolio sort -- chosen on breadth grounds (a small
+  # per-stock IC only realizes over enough names; IR ~ IC*sqrt(breadth)),
+  # NOT tuned on the OOS set. A fixed top_k=8 was the old default and proved
+  # pathologically concentrated (one blow-up dominated the 8-name book): at
+  # equal cost/data it returned ~9-11% CAGR vs ~18-20% for a 15-20 name book.
+  top_frac: 0.20
+  min_positions: 10                # floor so thin-universe days still diversify
+  top_k: 8                         # fallback when top_frac is null
+  rebalance_every_days: 20         # = label horizon
+  turnover_penalty: 0.003          # continuity bonus for existing positions
+  position_sizing: inverse_vol     # inverse-volatility weighting
+  # ---- human-executable realism (IDX retail) ----
+  # 1) the score exists at close(t); the earliest real fill is the NEXT
+  #    session's close -> returns measured close(t+1)->close(t+1+h)
+  #    (fwd_ret_exec). Benchmark uses the same basis (fair).
+  execution_lag_days: 1
+  # 2) IDX trades in 100-share lots. With a small account (25 jt / ~16
+  #    positions ≈ 1.5 jt per slot) some names' single lot already exceeds
+  #    the slot -- they are skipped and the remainder sits in cash (0%),
+  #    which is exactly what happens to a real retail account.
+  lot_size: 100
+  use_integer_lots: true
+  costs:
+    commission_buy_pct: 0.0015     # broker fee, buy side (retail range 0.15-0.35%)
+    commission_sell_pct: 0.0025    # broker fee + 0.1% IDX sales tax, sell side
+    # 0.20%/side: market-order spread reality for Kompas100 mid-caps; the old
+    # 0.10% assumed near-perfect fills only plausible for the very largest names
+    slippage_pct_per_side: 0.0020
+  benchmark: universe_equal_weight
+  annualization_trading_days: 252
+
+# -----------------------------------------------------------------------------
+# Forecast & monitoring
+# -----------------------------------------------------------------------------
+forecast:
+  deciles: 10
+
+monitoring:
+  live_ic_window_days: 60          # trailing realized-IC window
+  ic_degradation_frac: 0.5         # retrain if live IC < frac * OOS IC
+  psi_features_sample: 25          # how many features to test for drift
+  psi_bins: 10
+  psi_threshold: 0.25              # PSI above this = significant drift
+  recent_window_days: 45           # recent slice compared against reference
+  drift_triggers_retrain: false    # drift is advisory; retrain loop is IC-driven
+  reference_sample_rows: 50000     # rows sampled for the reference distribution

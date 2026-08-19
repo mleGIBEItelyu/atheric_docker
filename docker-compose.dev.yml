@@ -1,4 +1,21 @@
 services:
+  genesis-service-dev:
+    build:
+      context: ./genesis_service
+      dockerfile: Dockerfile
+    container_name: atheric_genesis_service_dev
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./genesis_service:/app
+      - ./BE/data:/app/data
+    environment:
+      - PORT=8000
+      - MARKET_DB_PATH=/app/data/idx_scraped_data.db
+    networks:
+      - atheric-dev-net
+
   backend-dev:
     image: golang:1.22-alpine
     container_name: atheric_backend_dev
@@ -14,6 +31,7 @@ services:
       - PORT=5000
       - DB_PATH=data/atheric_app.db
       - MARKET_DB_PATH=data/idx_scraped_data.db
+      - GENESIS_API_URL=http://genesis-service-dev:8000
       - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:80,http://127.0.0.1:5173,http://127.0.0.1
       - JWT_SECRET=${JWT_SECRET:-atheric_ai_super_secret_jwt_key_2026_change_in_prod}
       - RESEND_API_KEY=${RESEND_API_KEY}
@@ -21,6 +39,8 @@ services:
       - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
     command: sh -c "go run main.go"
+    depends_on:
+      - genesis-service-dev
     networks:
       - atheric-dev-net
 
