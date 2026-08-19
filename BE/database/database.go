@@ -88,8 +88,9 @@ func InitDB() *gorm.DB {
 	DB = db
 	seedInitialData(db)
 
-	// 2. Start unverified registration auto-purger (cleans up registrations older than 30s)
+	// 2. Start background maintenance workers
 	go startUnverifiedUserSweeper(db)
+	go startAuditAndSessionPruner(db)
 
 	// 3. Initialize MarketDB (Scraped Data & ML Store from TrainerProduksiML)
 	initMarketDB(db)
@@ -109,6 +110,32 @@ func startUnverifiedUserSweeper(db *gorm.DB) {
 				log.Printf("[AUTH SWEEPER] Auto-purged unverified user '%s' (ID: %d) after 1 minute expiration", u.Username, u.ID)
 			}
 		}
+	}
+}
+
+// startAuditAndSessionPruner periodically purges activity logs and device sessions older than 30 days
+func startAuditAndSessionPruner(db *gorm.DB) {
+	// Run once immediately on startup, then every 12 hours
+	runPrune := func() {
+		cutoff := time.Now().Add(-30 * 24 * time.Hour)
+		
+		// Prune audit logs
+		resLogs := db.Where("created_at < ?", cutoff).Delete(&models.ActivityLog{})
+		if resLogs.Error == nil && resLogs.RowsAffected > 0 {
+			log.Printf("[PRUNER OK] Cleaned up %d old audit logs (>30 days).", resLogs.RowsAffected)
+		}
+
+		// Prune old inactive sessions
+		resSessions := db.Where("last_active_at < ?", cutoff).Delete(&models.DeviceSession{})
+		if resSessions.Error == nil && resSessions.RowsAffected > 0 {
+			log.Printf("[PRUNER OK] Cleaned up %d expired device sessions (>30 days).", resSessions.RowsAffected)
+		}
+	}
+
+	runPrune()
+	ticker := time.NewTicker(12 * time.Hour)
+	for range ticker.C {
+		runPrune()
 	}
 }
 

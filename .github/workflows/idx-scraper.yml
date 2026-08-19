@@ -1,9 +1,11 @@
-name: Scheduled IDX Market Scraper (09:30 WIB)
+name: Scheduled IDX Market Scraper (09:30 WIB & 16:00 WIB)
 
 on:
   schedule:
-    # 09:30 WIB = 02:30 UTC, Setiap Senin - Jumat
+    # 1) Sesi Pagi: 09:30 WIB = 02:30 UTC (Senin - Jumat)
     - cron: '30 2 * * 1-5'
+    # 2) Sesi Tutup Sore: 16:00 WIB = 09:00 UTC (Senin - Jumat)
+    - cron: '0 9 * * 1-5'
   workflow_dispatch: # Memungkinkan trigger manual dari tombol GitHub Actions
 
 jobs:

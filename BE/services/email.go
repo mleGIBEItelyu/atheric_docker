@@ -194,3 +194,57 @@ https://atheric.ai
 	log.Println("[DEV MODE] RESEND_API_KEY is not configured. OTP printed above.")
 	return nil
 }
+
+// SendSupportTicketAlertEmail dispatches an alert email when a new support ticket is received
+func SendSupportTicketAlertEmail(ticketName, ticketEmail, ticketSubject, message string, ticketID uint) error {
+	resendKey := strings.TrimSpace(os.Getenv("RESEND_API_KEY"))
+	fromEmail := os.Getenv("RESEND_FROM_EMAIL")
+	if fromEmail == "" {
+		fromEmail = "Atheric AI <onboarding@resend.dev>"
+	}
+
+	adminEmail := os.Getenv("ADMIN_ALERT_EMAIL")
+	if adminEmail == "" {
+		adminEmail = "syahhGanteng@atheric.id"
+	}
+
+	subject := fmt.Sprintf("📩 [TIKET SUPPORT #%d] %s - %s", ticketID, ticketName, ticketSubject)
+	plainBody := fmt.Sprintf("Tiket Support Baru #%d\nNama: %s\nEmail: %s\nSubjek: %s\nPesan: %s\n\nBuka Admin Dashboard untuk merespons.",
+		ticketID, ticketName, ticketEmail, ticketSubject, message)
+
+	htmlBody := fmt.Sprintf(`<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>Tiket Support Baru</title></head>
+<body style="margin: 0; padding: 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #0b0f19; color: #f8fafc;">
+  <table width="100%%" border="0" cellspacing="0" cellpadding="0" style="max-width: 580px; margin: 0 auto; background-color: #111827; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden;">
+    <tr>
+      <td style="padding: 24px 32px; background: linear-gradient(135deg, #1e293b 0%%, #0f172a 100%%); border-bottom: 1px solid rgba(255,255,255,0.06);">
+        <h2 style="margin: 0; font-size: 20px; font-weight: 700; color: #38bdf8;">Atheric AI Support Desk</h2>
+      </td>
+    </tr>
+    <tr>
+      <td style="padding: 32px;">
+        <span style="display: inline-block; padding: 4px 10px; font-size: 11px; font-weight: 700; background-color: rgba(56, 189, 248, 0.15); color: #38bdf8; border-radius: 4px; margin-bottom: 16px;">TIKET BARU #%d</span>
+        <h3 style="margin: 0 0 16px 0; font-size: 17px; color: #f8fafc;">%s</h3>
+        
+        <table width="100%%" border="0" cellspacing="0" cellpadding="8" style="background-color: #1e293b; border-radius: 8px; margin-bottom: 20px; font-size: 13.5px;">
+          <tr><td width="30%%" style="color: #94a3b8;">Pengirim:</td><td style="color: #f8fafc; font-weight: 600;">%s (%s)</td></tr>
+          <tr><td style="color: #94a3b8;">Waktu:</td><td style="color: #cbd5e1;">%s WIB</td></tr>
+        </table>
+
+        <div style="background-color: rgba(255,255,255,0.03); border-left: 3px solid #38bdf8; padding: 14px 16px; border-radius: 4px; font-size: 13.5px; line-height: 1.6; color: #e2e8f0; margin-bottom: 24px; white-space: pre-wrap;">%s</div>
+        
+        <p style="margin: 0; font-size: 12px; color: #64748b;">Notifikasi otomatis sistem Helpdesk Atheric AI.</p>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`, ticketID, ticketSubject, ticketName, ticketEmail, time.Now().Format("02 Jan 2006 15:04"), message)
+
+	log.Printf("[SUPPORT ALERT] New Ticket #%d from %s (%s): %s", ticketID, ticketName, ticketEmail, ticketSubject)
+
+	if resendKey != "" {
+		return sendViaResendAPI(resendKey, fromEmail, adminEmail, subject, htmlBody, plainBody)
+	}
+	return nil
+}

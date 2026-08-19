@@ -573,7 +573,32 @@ func CreateSupportTicket(c *fiber.Ctx) error {
 		return c.Status(500).JSON(fiber.Map{"error": "Failed to record support ticket"})
 	}
 
-	// Record notification for user if registered
+	// 1. Dispatch Instant Admin Alert Email in background
+	go func(name, email, subject, message string, tid uint) {
+		_ = services.SendSupportTicketAlertEmail(name, email, subject, message, tid)
+	}(ticket.Name, ticket.Email, ticket.Subject, ticket.Message, ticket.ID)
+
+	// 2. Dispatch in-app notification for all Admins
+	go func(name, subject string, tid uint) {
+		var admins []models.User
+		if err := database.DB.Where("role = ?", "admin").Find(&admins).Error; err == nil {
+			for _, adm := range admins {
+				admNotif := models.Notification{
+					UserID:    adm.ID,
+					Title:     fmt.Sprintf("Tiket Support Baru: %s", subject),
+					Body:      fmt.Sprintf("User '%s' mengirim tiket bantuan #%d: '%s'", name, tid, subject),
+					Category:  "support",
+					Impact:    "High +",
+					Read:      false,
+					Time:      "Baru saja",
+					CreatedAt: time.Now(),
+				}
+				database.DB.Create(&admNotif)
+			}
+		}
+	}(ticket.Name, ticket.Subject, ticket.ID)
+
+	// 3. Record notification for user if registered
 	var targetUser models.User
 	if err := database.DB.Where("LOWER(email) = LOWER(?)", ticket.Email).First(&targetUser).Error; err == nil {
 		supportNotif := models.Notification{
