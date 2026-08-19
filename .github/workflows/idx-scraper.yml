@@ -1,0 +1,34 @@
+name: Scheduled IDX Market Scraper (09:30 WIB)
+
+on:
+  schedule:
+    # 09:30 WIB = 02:30 UTC, Setiap Senin - Jumat
+    - cron: '30 2 * * 1-5'
+  workflow_dispatch: # Memungkinkan trigger manual dari tombol GitHub Actions
+
+jobs:
+  scrape-and-sync:
+    name: Scrape IDX Market & Sync to VPS
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Scraper Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install yfinance requests pandas
+
+      - name: Run IDX Cron Scraper (Skips Weekends & Indonesian Holidays)
+        env:
+          VPS_SYNC_URL: ${{ secrets.VPS_SYNC_URL || 'https://atheric.id' }}
+          VPS_SYNC_KEY: ${{ secrets.VPS_SYNC_KEY || secrets.JWT_SECRET || '7vK9mQ2xR8pL4zN6tY3wF1cH5jD0sA8eB6uG9kP2' }}
+        run: |
+          python scripts/idx_cron_scraper.py

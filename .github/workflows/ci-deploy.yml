@@ -1,0 +1,86 @@
+name: CI/CD Pipeline & Auto Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  test-and-build:
+    name: Build & Verify Services
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: BE/go.sum
+
+      - name: Verify Backend (Go) Build
+        run: |
+          cd BE
+          go vet ./...
+          go build -v .
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: FE/package-lock.json
+
+      - name: Verify Frontend (React/Vite) Build
+        run: |
+          cd FE
+          npm ci
+          npm run build
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Verify Genesis AI Microservice
+        run: |
+          cd genesis_service
+          pip install -r requirements.txt
+          python -c "import crypto; import server; print('Genesis Microservice Syntax & Imports OK!')"
+
+  deploy-vps:
+    name: Deploy to Production VPS
+    needs: test-and-build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH to VPS
+        uses: appleboy/ssh-action@v1.0.3
+        if: env.VPS_HOST != ''
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
+          APP_DIR: ${{ secrets.VPS_APP_DIR || '/root/athericweb' }}
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          script: |
+            set -e
+            echo "🚀 [DEPLOY] Pulling latest main branch from GitHub..."
+            cd ${{ secrets.VPS_APP_DIR || '/root/athericweb' }}
+            git pull origin main
+            echo "🐳 [DOCKER] Rebuilding and starting containers..."
+            docker compose down || true
+            docker compose up -d --build
+            docker system prune -f
+            echo "✅ [SUCCESS] Deployment completed successfully!"
