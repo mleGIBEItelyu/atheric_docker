@@ -13,12 +13,14 @@ export const stockKeys = {
   news: (ticker: string) => [...stockKeys.all, 'news', ticker] as const,
 }
 
-// Data Harga Saham Harian (Fresh 30 detik)
+// Data Harga Saham Real-Time (Live Refresh Tiap 10 Detik)
 export function useStock(ticker = 'BBCA') {
   return useQuery({
     queryKey: stockKeys.stock(ticker),
     queryFn: () => fetchStock(ticker),
-    staleTime: 30 * 1000,
+    staleTime: 5 * 1000,
+    refetchInterval: 10 * 1000, // Live auto-refresh setiap 10 detik
+    refetchIntervalInBackground: false,
   })
 }
 

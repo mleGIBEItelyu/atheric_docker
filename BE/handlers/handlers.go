@@ -925,13 +925,26 @@ func GetRankingHighlights(c *fiber.Ctx) error {
 	})
 }
 
-// GetStockDetail returns detail information for a stock ticker
+// GetStockDetail returns detail information for a stock ticker with live real-time price lookup
 func GetStockDetail(c *fiber.Ctx) error {
-	ticker := strings.ToUpper(c.Params("ticker"))
+	ticker := strings.ToUpper(strings.TrimSpace(c.Params("ticker")))
 	var stock models.Stock
 	if err := database.DB.Where("ticker = ?", ticker).First(&stock).Error; err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Stock not found"})
 	}
+
+	// Fetch live real-time price quote from Yahoo Finance Gateway (15s cache)
+	if services.FetchLiveStockQuote(ticker, &stock) {
+		// Asynchronously update stock price in DB
+		go func(s models.Stock) {
+			database.DB.Model(&models.Stock{}).Where("ticker = ?", s.Ticker).Updates(map[string]interface{}{
+				"price":          s.Price,
+				"change":         s.Change,
+				"change_percent": s.ChangePercent,
+			})
+		}(stock)
+	}
+
 	return c.JSON(stock)
 }
 
