@@ -42,7 +42,7 @@ compute:
 # -----------------------------------------------------------------------------
 storage:
   backend: sqlite
-  sqlite_path: atheric.db    # relatif ke root TrainerProduksiML/ → file yang sama dengan data pipeline
+  sqlite_path: ../BE/data/idx_scraped_data.db    # relatif ke root TrainerProduksiML/ → BE/data/idx_scraped_data.db
   write_chunksize: 5000
 
 paths:
