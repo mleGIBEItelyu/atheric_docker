@@ -23,16 +23,21 @@ function getFallbackStyle(ticker: string) {
   }
 }
 
-export function StockLogo({ ticker, name, size = 36, className = '' }: StockLogoProps) {
+export function StockLogo({ 
+  ticker, 
+  name, 
+  size = 36, 
+  className = '' 
+}: StockLogoProps) {
   const clean = (ticker || '').replace('.JK', '').toUpperCase()
   const [srcIndex, setSrcIndex] = useState(0)
   const [hasError, setHasError] = useState(false)
 
-  // Multi-tier automatic CDN endpoints for Indonesian IDX stocks
+  // 1:1 Stockbit CDN Priority (All IDX stocks in pure 1:1 square app-icon format)
   const logoSources = [
+    `https://assets.stockbit.com/logos/companies/${clean}.png`,
     `https://assets.parqet.com/logos/symbol/${clean}.JK`,
     `https://financialmodelingprep.com/image-stock/${clean}.JK.png`,
-    `https://eodhd.com/img/logos/JK/${clean}.png`,
   ]
 
   const currentSrc = logoSources[srcIndex]
@@ -44,8 +49,8 @@ export function StockLogo({ ticker, name, size = 36, className = '' }: StockLogo
     height: size,
     minWidth: size,
     minHeight: size,
-    borderRadius: Math.max(6, Math.floor(size / 3.5)),
-    fontSize: Math.max(10, Math.floor(size * 0.38)),
+    borderRadius: Math.max(8, Math.floor(size / 3.2)),
+    fontSize: Math.max(10, Math.floor(size * 0.36)),
     fontWeight: 700,
     display: 'inline-flex',
     alignItems: 'center',
@@ -53,7 +58,7 @@ export function StockLogo({ ticker, name, size = 36, className = '' }: StockLogo
     letterSpacing: '-0.02em',
     textTransform: 'uppercase',
     userSelect: 'none',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.3)',
+    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
     position: 'relative',
     overflow: 'hidden',
     flexShrink: 0,
@@ -67,23 +72,27 @@ export function StockLogo({ ticker, name, size = 36, className = '' }: StockLogo
     }
   }
 
-  // If dynamic CDN logo is available
+  // If dynamic Stockbit 1:1 logo is available
   if (!hasError && currentSrc) {
     return (
-      <div
+      <div 
         className={`stock-logo-wrap ${className}`}
         style={{
           ...sizeStyle,
           background: 'rgba(255, 255, 255, 0.04)',
           border: '1px solid rgba(255, 255, 255, 0.1)',
-          padding: Math.max(2, Math.floor(size * 0.1)),
         }}
         title={`${clean} - ${name || clean}`}
       >
         <img
           src={currentSrc}
           alt={`${clean} logo`}
-          style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 'inherit' }}
+          style={{ 
+            width: '100%', 
+            height: '100%', 
+            objectFit: 'cover', 
+            borderRadius: 'inherit' 
+          }}
           onError={handleImgError}
           loading="lazy"
         />
@@ -93,9 +102,9 @@ export function StockLogo({ ticker, name, size = 36, className = '' }: StockLogo
 
   // Graceful Monogram Fallback Badge
   return (
-    <div
-      className={`stock-logo-badge ${className}`}
-      style={{ ...sizeStyle, ...fallback }}
+    <div 
+      className={`stock-logo-badge ${className}`} 
+      style={{ ...sizeStyle, ...fallback }} 
       title={`${clean} - ${name || clean}`}
     >
       <span>{label}</span>
