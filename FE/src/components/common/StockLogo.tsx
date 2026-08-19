@@ -19,7 +19,6 @@ function getFallbackStyle(ticker: string) {
   return {
     background: `linear-gradient(135deg, hsl(${hue}, 75%, 28%) 0%, hsl(${hue}, 85%, 15%) 100%)`,
     color: '#FFFFFF',
-    border: `1px solid hsla(${hue}, 85%, 60%, 0.35)`,
   }
 }
 
@@ -33,7 +32,7 @@ export function StockLogo({
   const [srcIndex, setSrcIndex] = useState(0)
   const [hasError, setHasError] = useState(false)
 
-  // 1:1 Stockbit CDN Priority (All IDX stocks in pure 1:1 square app-icon format)
+  // 1:1 Stockbit CDN Priority (All IDX stocks in pure 1:1 circular format)
   const logoSources = [
     `https://assets.stockbit.com/logos/companies/${clean}.png`,
     `https://assets.parqet.com/logos/symbol/${clean}.JK`,
@@ -49,7 +48,7 @@ export function StockLogo({
     height: size,
     minWidth: size,
     minHeight: size,
-    borderRadius: Math.max(8, Math.floor(size / 3.2)),
+    borderRadius: '50%',
     fontSize: Math.max(10, Math.floor(size * 0.36)),
     fontWeight: 700,
     display: 'inline-flex',
@@ -58,7 +57,8 @@ export function StockLogo({
     letterSpacing: '-0.02em',
     textTransform: 'uppercase',
     userSelect: 'none',
-    boxShadow: '0 2px 8px rgba(0, 0, 0, 0.25)',
+    border: 'none',
+    outline: 'none',
     position: 'relative',
     overflow: 'hidden',
     flexShrink: 0,
@@ -72,15 +72,14 @@ export function StockLogo({
     }
   }
 
-  // If dynamic Stockbit 1:1 logo is available
+  // If dynamic Stockbit circular logo is available
   if (!hasError && currentSrc) {
     return (
       <div 
         className={`stock-logo-wrap ${className}`}
         style={{
           ...sizeStyle,
-          background: 'rgba(255, 255, 255, 0.04)',
-          border: '1px solid rgba(255, 255, 255, 0.1)',
+          background: 'transparent',
         }}
         title={`${clean} - ${name || clean}`}
       >
@@ -91,7 +90,8 @@ export function StockLogo({
             width: '100%', 
             height: '100%', 
             objectFit: 'cover', 
-            borderRadius: 'inherit' 
+            borderRadius: '50%',
+            display: 'block',
           }}
           onError={handleImgError}
           loading="lazy"
@@ -100,7 +100,7 @@ export function StockLogo({
     )
   }
 
-  // Graceful Monogram Fallback Badge
+  // Graceful Monogram Fallback Badge (Circular & Borderless)
   return (
     <div 
       className={`stock-logo-badge ${className}`} 
