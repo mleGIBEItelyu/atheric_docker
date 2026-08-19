@@ -5,6 +5,7 @@ import { GLOSSARY } from '@/data/constants'
 import { PlusIcon } from '@/components/common/icons'
 import { useToast } from '@/components/common/Toast'
 import { ShareModal } from '@/components/common/ShareModal'
+import { StockLogo } from '@/components/common/StockLogo'
 
 interface Props { ticker: string }
 
@@ -45,10 +46,14 @@ export function StockHeader({ ticker }: Props) {
 
   return (
     <div className="stock-head">
-      <div className="stock-id">
-        <div className="stock-row">
-          <span className="stock-ticker">{stock.ticker}</span>
-          <span className="stock-name">{stock.name}</span>
+      <div className="stock-id" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+        <StockLogo ticker={stock.ticker} name={stock.name} size={44} />
+        <div>
+          <div className="stock-row" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span className="stock-ticker">{stock.ticker}</span>
+            <span className="stock-badge" style={{ fontSize: '11px', padding: '2px 8px', borderRadius: '4px', background: 'rgba(56, 189, 248, 0.15)', color: '#38bdf8', fontWeight: 600 }}>IDX</span>
+          </div>
+          <span className="stock-name" style={{ color: '#94a3b8', fontSize: '13px' }}>{stock.name}</span>
         </div>
       </div>
       <div className="stock-actions">

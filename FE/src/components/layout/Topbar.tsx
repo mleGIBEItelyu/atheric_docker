@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom'
 import { SearchIcon } from '@/components/common/icons'
 import { useIndices, useRankingRows } from '@/hooks/useMarkets'
 
+import { StockLogo } from '@/components/common/StockLogo'
+
 interface Props { 
   onSearch?: (q: string) => void;
   onMenuClick: () => void;
@@ -75,7 +77,7 @@ export function Topbar({ onSearch, onMenuClick }: Props) {
             position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0,
             background: 'var(--panel)', border: '1px solid var(--border-strong)',
             borderRadius: 'var(--radius)', boxShadow: '0 16px 40px rgba(0,0,0,0.5)',
-            zIndex: 200, maxHeight: '220px', overflowY: 'auto',
+            zIndex: 200, maxHeight: '240px', overflowY: 'auto',
           }}>
             {searchResults.map(res => (
               <div
@@ -90,9 +92,12 @@ export function Topbar({ onSearch, onMenuClick }: Props) {
                 onMouseLeave={e => (e.currentTarget.style.background = '')}
                 onClick={() => selectStock(res.ticker)}
               >
-                <div>
-                  <span style={{ fontWeight: 800, color: 'var(--text)' }}>{res.ticker}</span>
-                  <span style={{ marginLeft: '8px', fontSize: '11.5px', color: 'var(--text-dim)' }}>{res.company}</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <StockLogo ticker={res.ticker} name={res.company} size={28} />
+                  <div>
+                    <span style={{ fontWeight: 800, color: 'var(--text)' }}>{res.ticker}</span>
+                    <span style={{ marginLeft: '8px', fontSize: '11.5px', color: 'var(--text-dim)' }}>{res.company}</span>
+                  </div>
                 </div>
                 <span style={{ fontSize: '12px', fontWeight: 700, color: res.dir === 'up' ? 'var(--green)' : 'var(--red)' }}>
                   {res.ret}

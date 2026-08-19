@@ -4,6 +4,7 @@ import { useToast } from '@/components/common/Toast'
 import { useAuth } from '@/context/AuthContext'
 import { fetchWatchlistApi, toggleWatchlistApi } from '@/services/api'
 import { useStock } from '@/hooks/useStock'
+import { StockLogo } from '@/components/common/StockLogo'
 
 function WatchlistItemCard({ ticker, onRemove }: { ticker: string; onRemove: (t: string, e: React.MouseEvent) => void }) {
   const navigate = useNavigate()
@@ -26,15 +27,18 @@ function WatchlistItemCard({ ticker, onRemove }: { ticker: string; onRemove: (t:
       onMouseLeave={e => (e.currentTarget.style.borderColor = '')}
     >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>{ticker}</span>
-            <span className="pill hold" style={{ fontSize: '10px', padding: '2px 7px' }}>
-              {stock?.initial || ticker.slice(0, 2)}
-            </span>
-          </div>
-          <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '4px' }}>
-            {stock?.name || ticker}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <StockLogo ticker={ticker} name={stock?.name} size={38} />
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '16px', fontWeight: 800, color: 'var(--text)' }}>{ticker}</span>
+              <span className="pill hold" style={{ fontSize: '10px', padding: '2px 7px' }}>
+                IDX
+              </span>
+            </div>
+            <div style={{ fontSize: '12px', color: 'var(--text-dim)', marginTop: '2px' }}>
+              {stock?.name || ticker}
+            </div>
           </div>
         </div>
         <button
