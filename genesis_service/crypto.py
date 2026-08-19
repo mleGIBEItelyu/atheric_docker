@@ -18,7 +18,10 @@ try:
 except ImportError:
     _HAS_AESGCM = False
 
-MASTER_KEY = os.environ.get("GENESIS_DYNAMIC_KEY_MASTER", "atheric_genesis_prod_master_salt_2026")
+MASTER_KEY = os.environ.get(
+    "GENESIS_ENCRYPTION_KEY",
+    os.environ.get("GENESIS_DYNAMIC_KEY_MASTER", os.environ.get("JWT_SECRET", "atheric_genesis_prod_master_salt_2026"))
+)
 
 def derive_rolling_key(epoch_window: int = 60, offset: int = 0) -> bytes:
     """Derives a dynamic 256-bit AES key based on current timestamp window."""

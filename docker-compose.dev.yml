@@ -13,6 +13,8 @@ services:
     environment:
       - PORT=8000
       - MARKET_DB_PATH=/app/data/idx_scraped_data.db
+      - GENESIS_ENCRYPTION_KEY=${GENESIS_ENCRYPTION_KEY:-${JWT_SECRET:-atheric_genesis_prod_master_salt_2026}}
+      - JWT_SECRET=${JWT_SECRET:-atheric_genesis_prod_master_salt_2026}
     networks:
       - atheric-dev-net
 
@@ -32,6 +34,7 @@ services:
       - DB_PATH=data/atheric_app.db
       - MARKET_DB_PATH=data/idx_scraped_data.db
       - GENESIS_API_URL=http://genesis-service-dev:8000
+      - GENESIS_ENCRYPTION_KEY=${GENESIS_ENCRYPTION_KEY:-${JWT_SECRET:-atheric_genesis_prod_master_salt_2026}}
       - ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000,http://localhost:80,http://127.0.0.1:5173,http://127.0.0.1
       - JWT_SECRET=${JWT_SECRET:-atheric_ai_super_secret_jwt_key_2026_change_in_prod}
       - RESEND_API_KEY=${RESEND_API_KEY}
