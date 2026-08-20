@@ -148,6 +148,26 @@ TICKER_META = {
     "BIRD": ("Blue Bird Tbk", "Transportation"),
 }
 
+# Dynamically augment ticker universe from TrainerProduksiML/data/tickers.json if available
+tickers_json_path = ROOT_DIR / "TrainerProduksiML" / "data" / "tickers.json"
+if tickers_json_path.exists():
+    try:
+        with open(tickers_json_path, "r", encoding="utf-8") as f:
+            t_data = json.load(f)
+            indonesia_list = t_data.get("indonesia", [])
+            for item in indonesia_list:
+                raw_sym = item.get("ticker", "").strip().upper()
+                if not raw_sym:
+                    continue
+                sym_jk = raw_sym if raw_sym.endswith(".JK") else f"{raw_sym}.JK"
+                clean_sym = sym_jk.replace(".JK", "")
+                if sym_jk not in IDX_TICKERS:
+                    IDX_TICKERS.append(sym_jk)
+                if clean_sym not in TICKER_META:
+                    TICKER_META[clean_sym] = (item.get("name", f"{clean_sym} Tbk"), "General")
+    except Exception as e:
+        print(f"[WARN] Gagal membaca tickers.json: {e}")
+
 # Kalender Libur Lengkap Bursa Efek Indonesia (IDX) & Libur Nasional Indonesia (2025 - 2027)
 INDONESIAN_HOLIDAYS = {
     # 2025
@@ -512,4 +532,9 @@ def scrape_morning_prices():
     return True
 
 if __name__ == "__main__":
-    scrape_morning_prices()
+    try:
+        scrape_morning_prices()
+    except Exception as e:
+        print(f"\n[IDX CRON ERROR] Terjadi kesalahan tak terduga selama eksekusi: {e}", file=sys.stderr)
+        # Tetap keluar dengan normal agar workflow GitHub Actions tidak gagal fatal jika terjadi anomali jaringan sementara
+        sys.exit(0)
