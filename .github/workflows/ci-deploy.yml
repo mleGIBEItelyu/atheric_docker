@@ -79,8 +79,7 @@ jobs:
             cd "$APP_DIR"
             echo "🔄 [GIT] Pulling latest main branch..."
             git pull origin main
-            echo "🐳 [DOCKER] Building & running containers..."
-            sudo docker compose down || docker compose down || true
-            sudo docker compose up -d --build || docker compose up -d --build
-            sudo docker system prune -f || docker system prune -f || true
+            sudo docker compose down --remove-orphans || true
+            sudo docker compose up -d --build --remove-orphans --force-recreate
+            sudo docker system prune -f || true
             echo "✅ [SUCCESS] Deployment completed successfully!"
