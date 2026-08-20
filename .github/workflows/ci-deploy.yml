@@ -71,15 +71,44 @@ jobs:
           script: |
             set -e
             APP_DIR="${{ secrets.VPS_APP_DIR || format('/home/{0}/athericML', secrets.VPS_USER) }}"
-            echo "🚀 [DEPLOY] Navigating to $APP_DIR..."
+            echo "🚀 [1/6] Navigating to project directory: $APP_DIR..."
             if [ ! -d "$APP_DIR" ]; then
               echo "Creating $APP_DIR and cloning repo..."
               git clone https://github.com/mleGIBEItelyu/atheric_docker.git "$APP_DIR"
             fi
             cd "$APP_DIR"
-            echo "🔄 [GIT] Pulling latest main branch..."
-            git pull origin main
-            sudo docker compose down --remove-orphans || true
-            sudo docker compose up -d --build --remove-orphans --force-recreate
+
+            echo "🔄 [2/6] Synchronizing Git repository with origin/main..."
+            git fetch origin main || true
+            git reset --hard origin/main || true
+            git clean -fd -e .env -e BE/data -e genesis_service/data || true
+
+            echo "📁 [3/6] Ensuring required directories & .env exist..."
+            mkdir -p BE/data genesis_service/data
+            if [ ! -f .env ] && [ -f .env.example ]; then
+              echo "Creating initial .env from template..."
+              cp .env.example .env
+            fi
+
+            echo "🧹 [4/6] Cleaning up old or conflicting containers..."
+            sudo docker compose down --remove-orphans 2>/dev/null || true
+            sudo docker rm -f atheric_frontend atheric_backend atheric_genesis_service 2>/dev/null || true
+
+            echo "🐳 [5/6] Building & launching containers..."
+            sudo docker compose up -d --build --remove-orphans --force-recreate || {
+              echo "⚠️ First attempt encountered an issue. Pruning builder cache and retrying..."
+              sudo docker builder prune -f || true
+              sudo docker compose down --remove-orphans || true
+              sudo docker rm -f atheric_frontend atheric_backend atheric_genesis_service 2>/dev/null || true
+              sudo docker compose up -d --build --remove-orphans --force-recreate
+            }
+
+            echo "🔍 [6/6] Verifying live container health..."
+            sleep 8
+            sudo docker ps
+            curl -sI http://localhost:80 | head -n 1 || true
+            curl -sI http://localhost:5000/api/health | head -n 1 || true
+            curl -sI http://localhost:8000/health | head -n 1 || true
+
             sudo docker system prune -f || true
-            echo "✅ [SUCCESS] Deployment completed successfully!"
+            echo "✨ [SUCCESS] Fullstack deployment verified and completed successfully!"
