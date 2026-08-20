@@ -30,7 +30,7 @@ jobs:
 
       - name: Run IDX Cron Scraper (Skips Weekends & Indonesian Holidays)
         env:
-          VPS_SYNC_URL: ${{ secrets.VPS_SYNC_URL || 'https://atheric.id' }}
-          VPS_SYNC_KEY: ${{ secrets.VPS_SYNC_KEY || secrets.JWT_SECRET || '7vK9mQ2xR8pL4zN6tY3wF1cH5jD0sA8eB6uG9kP2' }}
+          VPS_SYNC_URL: ${{ secrets.VPS_SYNC_URL }}
+          VPS_SYNC_KEY: ${{ secrets.VPS_SYNC_KEY }}
         run: |
           python scripts/idx_cron_scraper.py
