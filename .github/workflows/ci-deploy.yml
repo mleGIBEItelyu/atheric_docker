@@ -70,21 +70,8 @@ jobs:
           port: ${{ secrets.VPS_PORT || 22 }}
           script: |
             set -e
-            APP_DIR="${{ secrets.VPS_APP_DIR }}"
-            if [ -z "$APP_DIR" ]; then
-              if [ -d "/home/${{ secrets.VPS_USER }}/athericweb" ]; then
-                APP_DIR="/home/${{ secrets.VPS_USER }}/athericweb"
-              elif [ -d "/root/athericweb" ]; then
-                APP_DIR="/root/athericweb"
-              else
-                APP_DIR="$HOME/athericweb"
-              fi
-            fi
+            APP_DIR="${{ secrets.VPS_APP_DIR || format('/home/{0}', secrets.VPS_USER) }}"
             echo "🚀 [DEPLOY] Navigating to $APP_DIR..."
-            if [ ! -d "$APP_DIR" ]; then
-              echo "Repository not found at $APP_DIR, cloning..."
-              git clone https://github.com/mleGIBEItelyu/atheric_docker.git "$APP_DIR"
-            fi
             cd "$APP_DIR"
             echo "🔄 [GIT] Pulling latest main branch..."
             git pull origin main
