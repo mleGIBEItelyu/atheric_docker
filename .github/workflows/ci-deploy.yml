@@ -62,25 +62,34 @@ jobs:
     steps:
       - name: Deploy via SSH to VPS
         uses: appleboy/ssh-action@v1.0.3
-        if: env.VPS_HOST != ''
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-          VPS_PORT: ${{ secrets.VPS_PORT || 22 }}
-          APP_DIR: ${{ secrets.VPS_APP_DIR || '/root/athericweb' }}
         with:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT || 22 }}
           script: |
             set -e
-            echo "🚀 [DEPLOY] Pulling latest main branch from GitHub..."
-            cd ${{ secrets.VPS_APP_DIR || '/root/athericweb' }}
+            APP_DIR="${{ secrets.VPS_APP_DIR }}"
+            if [ -z "$APP_DIR" ]; then
+              if [ -d "/home/${{ secrets.VPS_USER }}/athericweb" ]; then
+                APP_DIR="/home/${{ secrets.VPS_USER }}/athericweb"
+              elif [ -d "/root/athericweb" ]; then
+                APP_DIR="/root/athericweb"
+              else
+                APP_DIR="$HOME/athericweb"
+              fi
+            fi
+            echo "🚀 [DEPLOY] Navigating to $APP_DIR..."
+            if [ ! -d "$APP_DIR" ]; then
+              echo "Repository not found at $APP_DIR, cloning..."
+              git clone https://github.com/mleGIBEItelyu/atheric_docker.git "$APP_DIR"
+            fi
+            cd "$APP_DIR"
+            echo "🔄 [GIT] Pulling latest main branch..."
             git pull origin main
-            echo "🐳 [DOCKER] Rebuilding and starting containers..."
-            docker compose down || true
-            docker compose up -d --build
-            docker system prune -f
+            echo "🐳 [DOCKER] Building & running containers..."
+            sudo docker compose down || docker compose down || true
+            sudo docker compose up -d --build || docker compose up -d --build
+            sudo docker system prune -f || docker system prune -f || true
             echo "✅ [SUCCESS] Deployment completed successfully!"
