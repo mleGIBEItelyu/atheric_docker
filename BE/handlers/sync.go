@@ -15,7 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// verifySyncKey checks secret token from X-Sync-Key or Authorization header with constant-time comparison
+// verifySyncKey checks secret token from X-Sync-Key or Authorization header
 func verifySyncKey(c *fiber.Ctx) bool {
 	syncSecret := strings.TrimSpace(os.Getenv("SYNC_SECRET_KEY"))
 	if syncSecret == "" {

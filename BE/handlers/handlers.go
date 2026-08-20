@@ -23,10 +23,48 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-var emailRegex = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+var (
+	emailRegex    = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	usernameRegex = regexp.MustCompile(`^[a-zA-Z0-9_.-]{3,30}$`)
+	otpCodeRegex  = regexp.MustCompile(`^[0-9]{6}$`)
+	tickerRegex   = regexp.MustCompile(`^[A-Z0-9]{2,10}$`)
+)
 
 func isValidEmail(email string) bool {
+	if len(email) > 100 {
+		return false
+	}
 	return emailRegex.MatchString(email)
+}
+
+func isValidUsername(username string) bool {
+	return usernameRegex.MatchString(username)
+}
+
+func isValidTicker(ticker string) bool {
+	return tickerRegex.MatchString(ticker)
+}
+
+// getAuthUserID extracts authenticated user ID from context
+func getAuthUserID(c *fiber.Ctx) (uint, error) {
+	idVal := c.Locals("user_id")
+	if idVal == nil {
+		return 0, fiber.NewError(fiber.StatusUnauthorized, "Sesi autentikasi tidak ditemukan. Harap login kembali.")
+	}
+	switch v := idVal.(type) {
+	case uint:
+		if v == 0 {
+			return 0, fiber.NewError(fiber.StatusUnauthorized, "User ID tidak valid.")
+		}
+		return v, nil
+	case float64:
+		if v <= 0 {
+			return 0, fiber.NewError(fiber.StatusUnauthorized, "User ID tidak valid.")
+		}
+		return uint(v), nil
+	default:
+		return 0, fiber.NewError(fiber.StatusUnauthorized, "Format identitas sesi tidak valid.")
+	}
 }
 
 // HealthCheck returns backend operational status
@@ -221,16 +259,16 @@ func Register(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Username, email, dan password wajib diisi."})
 	}
 
+	if !isValidUsername(req.Username) {
+		return c.Status(400).JSON(fiber.Map{"error": "Username hanya boleh 3-30 karakter alfanumerik, titik, strip, atau underscore."})
+	}
+
 	if !isValidEmail(req.Email) {
 		return c.Status(400).JSON(fiber.Map{"error": "Format email tidak valid (contoh: user@domain.com)."})
 	}
 
-	if len(req.Username) < 3 {
-		return c.Status(400).JSON(fiber.Map{"error": "Username minimal 3 karakter."})
-	}
-
-	if len(req.Password) < 6 {
-		return c.Status(400).JSON(fiber.Map{"error": "Password minimal 6 karakter."})
+	if len(req.Password) < 6 || len(req.Password) > 128 {
+		return c.Status(400).JSON(fiber.Map{"error": "Password harus antara 6 dan 128 karakter."})
 	}
 
 	// Check if username or email already exists
@@ -339,6 +377,14 @@ func VerifyEmailCode(c *fiber.Ctx) error {
 
 	if req.Email == "" || req.Code == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "Email dan Kode Verifikasi wajib diisi."})
+	}
+
+	if !isValidEmail(req.Email) {
+		return c.Status(400).JSON(fiber.Map{"error": "Format email tidak valid."})
+	}
+
+	if !otpCodeRegex.MatchString(req.Code) {
+		return c.Status(400).JSON(fiber.Map{"error": "Kode verifikasi harus 6 digit angka."})
 	}
 
 	var user models.User
@@ -500,7 +546,10 @@ func GetStocks(c *fiber.Ctx) error {
 
 // GetWatchlist returns current user starred watchlist
 func GetWatchlist(c *fiber.Ctx) error {
-	userId := c.Locals("user_id").(uint)
+	userId, err := getAuthUserID(c)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
+	}
 	var watchlist []models.Watchlist
 	database.DB.Where("user_id = ?", userId).Find(&watchlist)
 	return c.JSON(watchlist)
@@ -508,7 +557,10 @@ func GetWatchlist(c *fiber.Ctx) error {
 
 // ToggleWatchlist adds or removes a ticker from authenticated user watchlist
 func ToggleWatchlist(c *fiber.Ctx) error {
-	userId := c.Locals("user_id").(uint)
+	userId, err := getAuthUserID(c)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
+	}
 
 	type Request struct {
 		Ticker string `json:"ticker"`
@@ -519,12 +571,12 @@ func ToggleWatchlist(c *fiber.Ctx) error {
 	}
 
 	ticker := strings.ToUpper(strings.TrimSpace(req.Ticker))
-	if len(ticker) > 20 {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid ticker code"})
+	if !isValidTicker(ticker) {
+		return c.Status(400).JSON(fiber.Map{"error": "Format ticker tidak valid (2-10 huruf/angka)"})
 	}
 
 	var existing models.Watchlist
-	err := database.DB.Where("user_id = ? AND ticker = ?", userId, ticker).First(&existing).Error
+	err = database.DB.Where("user_id = ? AND ticker = ?", userId, ticker).First(&existing).Error
 	if err == nil {
 		// Toggle off: Delete
 		database.DB.Delete(&existing)
@@ -551,22 +603,21 @@ func CreateSupportTicket(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Invalid request payload"})
 	}
 
-	ticket.Name = strings.TrimSpace(ticket.Name)
-	ticket.Email = strings.TrimSpace(ticket.Email)
-	ticket.Subject = strings.TrimSpace(ticket.Subject)
-	ticket.Message = strings.TrimSpace(ticket.Message)
+	ticket.Name = sanitizeXSS(ticket.Name)
+	ticket.Email = strings.TrimSpace(strings.ToLower(ticket.Email))
+	ticket.Subject = sanitizeXSS(ticket.Subject)
+	ticket.Message = sanitizeXSS(ticket.Message)
 
 	if ticket.Name == "" || ticket.Email == "" || ticket.Message == "" {
 		return c.Status(400).JSON(fiber.Map{"error": "Name, Email, and Message are required"})
 	}
 
-	// Anti-Spam Bounds Checking
-	if len(ticket.Name) > 100 || len(ticket.Email) > 150 || len(ticket.Subject) > 200 || len(ticket.Message) > 2000 {
-		return c.Status(400).JSON(fiber.Map{"error": "Input length exceeds maximum allowed character limits"})
+	if !isValidEmail(ticket.Email) {
+		return c.Status(400).JSON(fiber.Map{"error": "Invalid email address format"})
 	}
 
-	if !strings.Contains(ticket.Email, "@") || !strings.Contains(ticket.Email, ".") {
-		return c.Status(400).JSON(fiber.Map{"error": "Invalid email address format"})
+	if len(ticket.Name) > 100 || len(ticket.Subject) > 200 || len(ticket.Message) > 2000 {
+		return c.Status(400).JSON(fiber.Map{"error": "Input length exceeds maximum allowed character limits"})
 	}
 
 	if err := database.DB.Create(&ticket).Error; err != nil {
@@ -770,14 +821,9 @@ func generateTickerNews(ticker string) []models.News {
 
 // GetUserSettings returns setting configuration for the authenticated user
 func GetUserSettings(c *fiber.Ctx) error {
-	var userID uint = 1
-	if idVal := c.Locals("user_id"); idVal != nil {
-		switch v := idVal.(type) {
-		case uint:
-			userID = v
-		case float64:
-			userID = uint(v)
-		}
+	userID, err := getAuthUserID(c)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	var setting models.UserSetting
@@ -803,14 +849,9 @@ func GetUserSettings(c *fiber.Ctx) error {
 
 // SaveUserSettings creates or updates setting configuration for authenticated user
 func SaveUserSettings(c *fiber.Ctx) error {
-	var userID uint = 1
-	if idVal := c.Locals("user_id"); idVal != nil {
-		switch v := idVal.(type) {
-		case uint:
-			userID = v
-		case float64:
-			userID = uint(v)
-		}
+	userID, err := getAuthUserID(c)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	type SettingReq struct {
@@ -1109,31 +1150,40 @@ func GetForecast(c *fiber.Ctx) error {
 // GetTarget returns dynamic model-driven price target and recommendation (cached in DB daily)
 func GetTarget(c *fiber.Ctx) error {
 	ticker := strings.ToUpper(c.Params("ticker"))
-	periodDate := time.Now().Format("2006-01-02")
+	rangeParam := strings.ToUpper(strings.TrimSpace(c.Query("range")))
+	if rangeParam != "3M" {
+		rangeParam = "1M"
+	}
+	periodDate := time.Now().Format("2006-01-02") + "_" + rangeParam
 
 	// 1. Check DB Cache
 	var cached models.ModelForecastCache
-	if err := database.DB.Where("ticker = ? AND period_month = ?", ticker, periodDate).First(&cached).Error; err == nil {
-		if time.Now().Before(cached.ExpiresAt) && cached.TargetPrice > 0 {
-			rec := "BUY"
-			if cached.Signal == "BEARISH" {
-				rec = "SELL"
-			} else if cached.Signal == "NETRAL" {
-				rec = "HOLD"
-			}
-			return c.JSON(fiber.Map{
-				"ticker":      cached.Ticker,
-				"model":       cached.ModelName,
-				"targetPrice": fmt.Sprintf("Rp %s", formatIDR(int(cached.TargetPrice))),
-				"rec":         rec,
-				"upside":      fmt.Sprintf("%+.1f%% Potensi (%d-Hari)", cached.PredReturnPct, cached.HorizonDays),
-				"sliderPct":   int(cached.Confidence),
-				"stopLoss":    fmt.Sprintf("Rp %s", formatIDR(int(cached.StopLossPrice))),
-				"riskReward":  "1 : 2.1",
-				"confidence":  fmt.Sprintf("%.0f%%", cached.Confidence),
-				"cached":      true,
-			})
+	if err := database.DB.Where("ticker = ? AND period_month = ?", ticker, periodDate).First(&cached).Error; err != nil {
+		// Fallback to non-suffixed cache if range is 1M
+		if rangeParam == "1M" {
+			_ = database.DB.Where("ticker = ? AND period_month = ?", ticker, time.Now().Format("2006-01-02")).First(&cached).Error
 		}
+	}
+
+	if cached.ID > 0 && time.Now().Before(cached.ExpiresAt) && cached.TargetPrice > 0 {
+		rec := "BUY"
+		if cached.Signal == "BEARISH" {
+			rec = "SELL"
+		} else if cached.Signal == "NETRAL" {
+			rec = "HOLD"
+		}
+		return c.JSON(fiber.Map{
+			"ticker":      cached.Ticker,
+			"model":       cached.ModelName,
+			"targetPrice": fmt.Sprintf("Rp %s", formatIDR(int(cached.TargetPrice))),
+			"rec":         rec,
+			"upside":      fmt.Sprintf("%+.1f%% Potensi (%d-Hari)", cached.PredReturnPct, cached.HorizonDays),
+			"sliderPct":   int(cached.Confidence),
+			"stopLoss":    fmt.Sprintf("Rp %s", formatIDR(int(cached.StopLossPrice))),
+			"riskReward":  "1 : 2.1",
+			"confidence":  fmt.Sprintf("%.0f%%", cached.Confidence),
+			"cached":      true,
+		})
 	}
 
 	price := 10250.0
@@ -1151,6 +1201,15 @@ func GetTarget(c *fiber.Ctx) error {
 	if services.GlobalGenesisManager != nil {
 		forecast := services.GlobalGenesisManager.GenerateDynamicForecast(ticker, price, signal)
 
+		horizonDays := 20
+		multiplier := 1.0
+		if rangeParam == "3M" {
+			horizonDays = 60
+			multiplier = 1.85
+		}
+		targetPrice := price + (forecast.TargetPrice-price)*multiplier
+		predReturn := ((targetPrice - price) / price) * 100.0
+
 		rec := "BUY"
 		if forecast.Signal == "BEARISH" {
 			rec = "SELL"
@@ -1161,9 +1220,9 @@ func GetTarget(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{
 			"ticker":      ticker,
 			"model":       forecast.ModelName,
-			"targetPrice": fmt.Sprintf("Rp %s", formatIDR(int(forecast.TargetPrice))),
+			"targetPrice": fmt.Sprintf("Rp %s", formatIDR(int(targetPrice))),
 			"rec":         rec,
-			"upside":      fmt.Sprintf("%+.1f%% Potensi (%d-Hari)", forecast.PredReturnPct, forecast.HorizonDays),
+			"upside":      fmt.Sprintf("%+.1f%% Potensi (%d-Hari)", predReturn, horizonDays),
 			"sliderPct":   int(confidence),
 			"stopLoss":    fmt.Sprintf("Rp %s", formatIDR(int(forecast.StopLossPrice))),
 			"riskReward":  forecast.RiskRewardRatio,
@@ -1308,14 +1367,9 @@ func GetSynthesis(c *fiber.Ctx) error {
 
 // GetDeviceSessions returns strictly genuine active and historical device sessions for authenticated user from DB
 func GetDeviceSessions(c *fiber.Ctx) error {
-	var userID uint = 1
-	if idVal := c.Locals("user_id"); idVal != nil {
-		switch v := idVal.(type) {
-		case uint:
-			userID = v
-		case float64:
-			userID = uint(v)
-		}
+	userID, err := getAuthUserID(c)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// Purge any mock entries if present
@@ -1352,17 +1406,16 @@ func GetDeviceSessions(c *fiber.Ctx) error {
 
 // RevokeDeviceSession deletes/revokes a device session record with 1-week security cooldown check
 func RevokeDeviceSession(c *fiber.Ctx) error {
-	var userID uint = 1
-	if idVal := c.Locals("user_id"); idVal != nil {
-		switch v := idVal.(type) {
-		case uint:
-			userID = v
-		case float64:
-			userID = uint(v)
-		}
+	userID, err := getAuthUserID(c)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	sessionID := c.Params("id")
+	sessionIDUint, err := strconv.ParseUint(sessionID, 10, 32)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "ID sesi tidak valid"})
+	}
 
 	// Check current device session cooldown
 	var currentSession models.DeviceSession
@@ -1374,7 +1427,7 @@ func RevokeDeviceSession(c *fiber.Ctx) error {
 		}
 	}
 
-	if err := database.DB.Where("user_id = ? AND id = ?", userID, sessionID).Delete(&models.DeviceSession{}).Error; err != nil {
+	if err := database.DB.Where("user_id = ? AND id = ?", userID, uint(sessionIDUint)).Delete(&models.DeviceSession{}).Error; err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "Gagal menghapus sesi perangkat"})
 	}
 
@@ -1450,16 +1503,16 @@ func CreateUserByAdmin(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Username, email, dan password wajib diisi."})
 	}
 
+	if !isValidUsername(req.Username) {
+		return c.Status(400).JSON(fiber.Map{"error": "Username hanya boleh 3-30 karakter alfanumerik, titik, strip, atau underscore."})
+	}
+
 	if !isValidEmail(req.Email) {
 		return c.Status(400).JSON(fiber.Map{"error": "Format email tidak valid (contoh: user@domain.com)."})
 	}
 
-	if len(req.Username) < 3 {
-		return c.Status(400).JSON(fiber.Map{"error": "Username minimal 3 karakter."})
-	}
-
-	if len(req.Password) < 6 {
-		return c.Status(400).JSON(fiber.Map{"error": "Password minimal 6 karakter."})
+	if len(req.Password) < 6 || len(req.Password) > 128 {
+		return c.Status(400).JSON(fiber.Map{"error": "Password harus antara 6 dan 128 karakter."})
 	}
 
 	passHash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
@@ -1771,17 +1824,39 @@ func GenerateAIResponse(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "Contents tidak boleh kosong"})
 	}
 
-	if req.Temperature <= 0 {
+	// Limit contents and text length
+	if len(req.Contents) > 10 {
+		req.Contents = req.Contents[len(req.Contents)-10:]
+	}
+	for i := range req.Contents {
+		for j := range req.Contents[i].Parts {
+			if len(req.Contents[i].Parts[j].Text) > 4000 {
+				req.Contents[i].Parts[j].Text = req.Contents[i].Parts[j].Text[:4000]
+			}
+		}
+	}
+
+	if len(req.SystemPrompt) > 2000 {
+		req.SystemPrompt = req.SystemPrompt[:2000]
+	}
+
+	if req.Temperature <= 0 || req.Temperature > 2.0 {
 		req.Temperature = 0.7
 	}
+
+	// Enforce strict upper bound for MaxTokens
 	if req.MaxTokens <= 0 {
 		req.MaxTokens = 300
+	} else if req.MaxTokens > 800 {
+		req.MaxTokens = 800
 	}
 
 	text, err := services.CallGeminiAPI(req.Contents, req.SystemPrompt, req.Temperature, req.MaxTokens)
 	if err != nil {
-		log.Printf("[AI ERROR] %v", err)
-		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+		log.Printf("[AI SECURITY ERROR] Gemini call failed: %v", err)
+		return c.Status(502).JSON(fiber.Map{
+			"error": "Layanan pemrosesan AI sedang mengalami beban tinggi. Silakan coba kembali sesaat lagi.",
+		})
 	}
 
 	return c.JSON(fiber.Map{
@@ -2133,14 +2208,9 @@ var SendTestNotification = TriggerLiveAlertNotification
 
 // GetNotifications returns all real notifications for the authenticated user
 func GetNotifications(c *fiber.Ctx) error {
-	var userID uint = 1
-	if idVal := c.Locals("user_id"); idVal != nil {
-		switch v := idVal.(type) {
-		case uint:
-			userID = v
-		case float64:
-			userID = uint(v)
-		}
+	userID, err := getAuthUserID(c)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	// Dynamically scan user's watchlist for real volume & price changes
@@ -2154,14 +2224,9 @@ func GetNotifications(c *fiber.Ctx) error {
 
 // MarkAllNotificationsRead marks all notifications for authenticated user as read
 func MarkAllNotificationsRead(c *fiber.Ctx) error {
-	var userID uint = 1
-	if idVal := c.Locals("user_id"); idVal != nil {
-		switch v := idVal.(type) {
-		case uint:
-			userID = v
-		case float64:
-			userID = uint(v)
-		}
+	userID, err := getAuthUserID(c)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	database.DB.Model(&models.Notification{}).Where("user_id = ?", userID).Update("read", true)
@@ -2170,19 +2235,19 @@ func MarkAllNotificationsRead(c *fiber.Ctx) error {
 
 // ToggleNotificationRead toggles the read status of a single notification
 func ToggleNotificationRead(c *fiber.Ctx) error {
-	var userID uint = 1
-	if idVal := c.Locals("user_id"); idVal != nil {
-		switch v := idVal.(type) {
-		case uint:
-			userID = v
-		case float64:
-			userID = uint(v)
-		}
+	userID, err := getAuthUserID(c)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
 	}
 
 	id := c.Params("id")
+	notifID, err := strconv.ParseUint(id, 10, 32)
+	if err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "ID notifikasi tidak valid"})
+	}
+
 	var notif models.Notification
-	if err := database.DB.Where("user_id = ? AND id = ?", userID, id).First(&notif).Error; err != nil {
+	if err := database.DB.Where("user_id = ? AND id = ?", userID, uint(notifID)).First(&notif).Error; err != nil {
 		return c.Status(404).JSON(fiber.Map{"error": "Notifikasi tidak ditemukan"})
 	}
 
@@ -2193,17 +2258,12 @@ func ToggleNotificationRead(c *fiber.Ctx) error {
 
 // ClearNotifications deletes all notifications for current user from database
 func ClearNotifications(c *fiber.Ctx) error {
-	var userID uint = 1
-	if idVal := c.Locals("user_id"); idVal != nil {
-		switch v := idVal.(type) {
-		case uint:
-			userID = v
-		case float64:
-			userID = uint(v)
-		}
+	userID, err := getAuthUserID(c)
+	if err != nil {
+		return c.Status(401).JSON(fiber.Map{"error": err.Error()})
 	}
 
-	database.DB.Where("user_id = ? OR user_id = 0", userID).Delete(&models.Notification{})
+	database.DB.Where("user_id = ?", userID).Delete(&models.Notification{})
 	return c.JSON(fiber.Map{"message": "Riwayat notifikasi berhasil dikosongkan", "success": true})
 }
 
@@ -2318,7 +2378,7 @@ func generateAndSaveStockSynthesis(ticker, dateKey string) []string {
 		}
 	}
 
-	// Fallback rule-based synthesis if AI API fails or reaches quota limit
+	// Fallback if AI call fails
 	if len(paras) < 2 {
 		p1 := fmt.Sprintf("Saham %s menunjukkan pergerakan teknikal yang stabil di kisaran harga Rp %s dengan struktur valuasi yang menarik di sektor %s. Model kuantitatif mendeteksi momentum tren positif yang berpotensi mendorong harga menuju target pengujian resistensi di level Rp %s dalam horizon 20 hari trading.",
 			ticker, formatPriceRp(price), category, formatPriceRp(targetPrice))

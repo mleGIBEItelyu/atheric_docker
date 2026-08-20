@@ -1,9 +1,12 @@
 import { useTarget } from '@/hooks/useStock'
 
-interface Props { ticker: string }
+interface Props {
+  ticker: string
+  range?: string
+}
 
-export function TargetCard({ ticker }: Props) {
-  const { data: t } = useTarget(ticker)
+export function TargetCard({ ticker, range = '1M' }: Props) {
+  const { data: t } = useTarget(ticker, range)
   if (!t) return <section className="card target-card"><div className="skeleton" style={{ height: 200 }} /></section>
 
   const cleanTitle = 'Target Harga AI'

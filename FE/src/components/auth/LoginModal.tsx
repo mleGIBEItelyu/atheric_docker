@@ -7,6 +7,7 @@ export function LoginModal() {
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [showPass, setShowPass] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -15,15 +16,40 @@ export function LoginModal() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
+
+    const trimmedUsername = username.trim()
+    const trimmedPassword = password.trim()
+    const trimmedEmail = email.trim()
+
+    if (!trimmedUsername || !trimmedPassword) {
+      setError('Semua kolom wajib diisi.')
+      return
+    }
+
+    if (tab === 'register') {
+      if (!/^[a-zA-Z0-9_.-]{3,30}$/.test(trimmedUsername)) {
+        setError('Username harus 3-30 karakter (hanya huruf, angka, titik, strip, underscore).')
+        return
+      }
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+        setError('Format email tidak valid.')
+        return
+      }
+      if (trimmedPassword.length < 6 || trimmedPassword.length > 128) {
+        setError('Password harus antara 6 dan 128 karakter.')
+        return
+      }
+    }
+
     setLoading(true)
 
     if (tab === 'login') {
-      const res = await login(username, password)
+      const res = await login(trimmedUsername, trimmedPassword)
       if (!res.success) {
         setError(res.error || 'Login gagal')
       }
     } else {
-      const res = await register(username, email, password)
+      const res = await register(trimmedUsername, trimmedEmail, trimmedPassword)
       if (!res.success) {
         setError(res.error || 'Registrasi gagal')
       }
@@ -201,23 +227,55 @@ export function LoginModal() {
             <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 600, color: 'var(--text-dim)', marginBottom: '6px' }}>
               Password
             </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="••••••••"
-              style={{
-                width: '100%',
-                padding: '10px 14px',
-                borderRadius: '8px',
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid var(--border-strong)',
-                color: 'var(--text)',
-                fontSize: '14px',
-                outline: 'none',
-              }}
-            />
+            <div style={{ position: 'relative' }}>
+              <input
+                type={showPass ? 'text' : 'password'}
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                style={{
+                  width: '100%',
+                  padding: '10px 40px 10px 14px',
+                  borderRadius: '8px',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid var(--border-strong)',
+                  color: 'var(--text)',
+                  fontSize: '14px',
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(v => !v)}
+                aria-label="Toggle password visibility"
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-dim)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {showPass ? (
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858-5.858A9.954 9.954 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m-4.592-4.592a3 3 0 11-4.243-4.243m4.242 4.242L3 3l18 18" />
+                  </svg>
+                ) : (
+                  <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
 
           <button

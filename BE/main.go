@@ -85,15 +85,12 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	// Gzip / Brotli Payload Compression (High speed on low-bandwidth/mobile connections)
 	app.Use(compress.New(compress.Config{
 		Level: compress.LevelBestSpeed,
 	}))
 
-	// HTTP Entity Tags (ETag) for 304 Not Modified caching
 	app.Use(etag.New())
 
-	// Enterprise Security Headers (OWASP & Production Hardening)
 	app.Use(func(c *fiber.Ctx) error {
 		c.Set("X-Content-Type-Options", "nosniff")
 		c.Set("X-Frame-Options", "SAMEORIGIN")
@@ -105,7 +102,6 @@ func main() {
 		return c.Next()
 	})
 
-	// Active Web Application Firewall (WAF) Payload Inspector
 	app.Use(middleware.WAFSanitizer())
 	app.Use(middleware.BotProtection())
 
@@ -197,6 +193,19 @@ func main() {
 		},
 	})
 
+	aiLimiter := limiter.New(limiter.Config{
+		Max:        15,
+		Expiration: 1 * time.Minute,
+		KeyGenerator: func(c *fiber.Ctx) string {
+			return c.IP()
+		},
+		LimitReached: func(c *fiber.Ctx) error {
+			return c.Status(429).JSON(fiber.Map{
+				"error": "Batas permintaan AI tercapai (maks 15 per menit). Silakan coba sesaat lagi.",
+			})
+		},
+	})
+
 	app.Get("/api/ws/monitor", websocket.New(handlers.WSMonitor))
 
 	api := app.Group("/api", globalLimiter)
@@ -216,7 +225,7 @@ func main() {
 	api.Get("/sentiment/:ticker", handlers.GetSentiment)
 	api.Get("/synthesis/:ticker", handlers.GetStockSynthesis)
 	api.Get("/stock/:ticker/synthesis", handlers.GetStockSynthesis)
-	api.Post("/stock/:ticker/synthesis/refresh", handlers.RefreshStockSynthesis)
+	api.Post("/stock/:ticker/synthesis/refresh", aiLimiter, middleware.BotProtection(), handlers.RefreshStockSynthesis)
 	api.Get("/ranking/highlights", handlers.GetRankingHighlights)
 	api.Get("/evaluations", handlers.GetEvaluations)
 	api.Get("/news", handlers.GetNews)
@@ -225,7 +234,7 @@ func main() {
 
 	// AI & Genesis Model Routes
 	api.Get("/ai/status", handlers.GetAIStatus)
-	api.Post("/ai/generate", handlers.GenerateAIResponse)
+	api.Post("/ai/generate", aiLimiter, middleware.BotProtection(), handlers.GenerateAIResponse)
 	api.Get("/genesis/summary", handlers.GetGenesisSummary)
 	api.Get("/genesis/release", handlers.GetGenesisRelease)
 	api.Get("/genesis/metrics", handlers.GetGenesisMetrics)

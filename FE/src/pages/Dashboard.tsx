@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { StockHeader } from '@/components/dashboard/StockHeader'
 import { ForecastCard } from '@/components/dashboard/ForecastCard'
@@ -9,6 +10,7 @@ import { NewsFeed } from '@/components/dashboard/NewsFeed'
 export function Dashboard() {
   const { ticker = 'BBCA' } = useParams<{ ticker?: string }>()
   const upperTicker = ticker.toUpperCase()
+  const [range, setRange] = useState('1M')
 
   return (
     <div className="content" id="stock-analysis-panel">
@@ -43,9 +45,11 @@ export function Dashboard() {
       </div>
       <StockHeader ticker={upperTicker} />
       <div className="dash-grid">
-        <div className="dash-col"><ForecastCard ticker={upperTicker} /></div>
         <div className="dash-col">
-          <TargetCard ticker={upperTicker} />
+          <ForecastCard ticker={upperTicker} range={range} onRangeChange={setRange} />
+        </div>
+        <div className="dash-col">
+          <TargetCard ticker={upperTicker} range={range} />
           <SentimentCard ticker={upperTicker} />
         </div>
         <div className="dash-bottom">

@@ -99,6 +99,19 @@ const CrossIcon = () => (
   </svg>
 )
 
+const EyeIcon = ({ show }: { show: boolean }) => (
+  show ? (
+    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858-5.858A9.954 9.954 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m-4.592-4.592a3 3 0 11-4.243-4.243m4.242 4.242L3 3l18 18" />
+    </svg>
+  ) : (
+    <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    </svg>
+  )
+)
+
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
 /* ------------------------------------------------------------------ */
@@ -494,6 +507,8 @@ function UsersTab() {
   const [deleteModalUser, setDeleteModalUser] = useState<AdminUser | null>(null)
   const [editModalUser, setEditModalUser] = useState<AdminUser | null>(null)
   const [editForm, setEditForm] = useState({ username: "", email: "", role: "USER", isActive: true, isVerified: true, password: "" })
+  const [showEditPass, setShowEditPass] = useState(false)
+  const [showNewPass, setShowNewPass] = useState(false)
 
   const [submitting, setSubmitting] = useState(false)
 
@@ -548,21 +563,32 @@ function UsersTab() {
   async function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!editModalUser) return
-    if (editForm.username.trim().length < 3) {
-      alert("Username minimal 3 karakter.")
+    const cleanUsername = editForm.username.trim()
+    const cleanEmail = editForm.email.trim()
+
+    if (!/^[a-zA-Z0-9_.-]{3,30}$/.test(cleanUsername)) {
+      alert("Username harus 3-30 karakter alfanumerik, titik, strip, atau underscore.")
       return
     }
-    if (editForm.password && editForm.password.trim().length < 6) {
-      alert("Password baru minimal 6 karakter.")
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      alert("Format email tidak valid.")
+      return
+    }
+    if (editForm.password && (editForm.password.trim().length < 6 || editForm.password.trim().length > 128)) {
+      alert("Password baru harus antara 6 dan 128 karakter.")
       return
     }
     setSubmitting(true)
     try {
-      const updated = await adminUpdateUserApi(editModalUser.id, editForm)
+      const updated = await adminUpdateUserApi(editModalUser.id, {
+        ...editForm,
+        username: cleanUsername,
+        email: cleanEmail,
+      })
       setUsers(u => u.map(x => x.id === editModalUser.id ? {
         ...x,
-        username: updated.username || editForm.username,
-        email: updated.email || editForm.email,
+        username: updated.username || cleanUsername,
+        email: updated.email || cleanEmail,
         role: updated.role || editForm.role,
         isActive: updated.isActive ?? editForm.isActive,
         isVerified: updated.isVerified ?? editForm.isVerified
@@ -577,17 +603,30 @@ function UsersTab() {
   // Handle Create User
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()
-    if (newUser.username.trim().length < 3) {
-      alert("Username minimal 3 karakter.")
+    const cleanUsername = newUser.username.trim()
+    const cleanEmail = newUser.email.trim()
+    const cleanPassword = newUser.password.trim()
+
+    if (!/^[a-zA-Z0-9_.-]{3,30}$/.test(cleanUsername)) {
+      alert("Username harus 3-30 karakter alfanumerik, titik, strip, atau underscore.")
       return
     }
-    if (newUser.password.trim().length < 6) {
-      alert("Password minimal 6 karakter.")
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
+      alert("Format email tidak valid.")
+      return
+    }
+    if (cleanPassword.length < 6 || cleanPassword.length > 128) {
+      alert("Password harus antara 6 dan 128 karakter.")
       return
     }
     setCreating(true)
     try {
-      await adminCreateUserApi(newUser)
+      await adminCreateUserApi({
+        ...newUser,
+        username: cleanUsername,
+        email: cleanEmail,
+        password: cleanPassword,
+      })
       setShowCreate(false); setNewUser({ username: "", email: "", password: "", role: "USER" }); await load()
     } catch (e: any) { alert(e.message) }
     setCreating(false)
@@ -911,9 +950,29 @@ function UsersTab() {
               {/* Row 3: Password Baru */}
               <div>
                 <label style={labelStyle}>Password Baru (Opsional)</label>
-                <input type="password" style={customInp}
-                  placeholder="Biarkan kosong jika tidak ingin mengubah password"
-                  value={editForm.password} onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))} />
+                <div style={{ position: "relative" }}>
+                  <input
+                    type={showEditPass ? "text" : "password"}
+                    style={{ ...customInp, paddingRight: "42px" }}
+                    placeholder="Biarkan kosong jika tidak ingin mengubah password"
+                    value={editForm.password}
+                    onChange={e => setEditForm(f => ({ ...f, password: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPass(v => !v)}
+                    aria-label="Toggle password visibility"
+                    style={{
+                      position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)",
+                      background: "none", border: "none", color: "#9ca3af", cursor: "pointer", padding: "4px", display: "flex",
+                      alignItems: "center", justifyContent: "center", transition: "color 0.15s ease",
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.color = "#f3f4f6"}
+                    onMouseLeave={e => e.currentTarget.style.color = "#9ca3af"}
+                  >
+                    <EyeIcon show={showEditPass} />
+                  </button>
+                </div>
                 <div style={{ fontSize: "11px", color: "#6b7280", marginTop: "5px" }}>Minimal 6 karakter jika ingin mengganti password baru.</div>
               </div>
 
@@ -1050,9 +1109,31 @@ function UsersTab() {
               <div style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr", gap: "14px" }}>
                 <div>
                   <label style={labelStyle}>Password</label>
-                  <input type="password" minLength={6} required placeholder="Minimal 6 karakter"
-                    style={customInp}
-                    value={newUser.password} onChange={e => setNewUser(n => ({ ...n, password: e.target.value }))} />
+                  <div style={{ position: "relative" }}>
+                    <input
+                      type={showNewPass ? "text" : "password"}
+                      minLength={6}
+                      required
+                      placeholder="Minimal 6 karakter"
+                      style={{ ...customInp, paddingRight: "42px" }}
+                      value={newUser.password}
+                      onChange={e => setNewUser(n => ({ ...n, password: e.target.value }))}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPass(v => !v)}
+                      aria-label="Toggle password visibility"
+                      style={{
+                        position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)",
+                        background: "none", border: "none", color: "#9ca3af", cursor: "pointer", padding: "4px", display: "flex",
+                        alignItems: "center", justifyContent: "center", transition: "color 0.15s ease",
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.color = "#f3f4f6"}
+                      onMouseLeave={e => e.currentTarget.style.color = "#9ca3af"}
+                    >
+                      <EyeIcon show={showNewPass} />
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label style={labelStyle}>Role</label>

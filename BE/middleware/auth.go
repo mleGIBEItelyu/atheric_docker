@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"atheric-be/database"
+	"atheric-be/models"
 	"atheric-be/services"
 
 	"github.com/gofiber/fiber/v2"
@@ -93,13 +95,37 @@ func Protected() fiber.Handler {
 			})
 		}
 
-		if userIdFloat, ok := claims["user_id"].(float64); ok {
-			c.Locals("user_id", uint(userIdFloat))
-		} else {
+		userIdFloat, ok := claims["user_id"].(float64)
+		if !ok || userIdFloat <= 0 {
 			return c.Status(401).JSON(fiber.Map{
 				"error": "Akses ditolak: User ID tidak ditemukan dalam token.",
 			})
 		}
+		userID := uint(userIdFloat)
+
+		// Verify account status in DB
+		if database.DB != nil {
+			var activeUser models.User
+			if err := database.DB.Select("id, is_active, is_verified, role").Where("id = ?", userID).First(&activeUser).Error; err != nil {
+				return c.Status(401).JSON(fiber.Map{
+					"error": "Akses ditolak: Akun pengguna tidak ditemukan atau telah dihapus.",
+				})
+			}
+			if !activeUser.IsActive {
+				return c.Status(403).JSON(fiber.Map{
+					"error": "Akses ditolak: Akun Anda saat ini dinonaktifkan oleh Administrator.",
+				})
+			}
+			c.Locals("role", activeUser.Role)
+		} else {
+			if r, hasRole := claims["role"].(string); hasRole {
+				c.Locals("role", r)
+			} else {
+				c.Locals("role", "USER")
+			}
+		}
+
+		c.Locals("user_id", userID)
 
 		if username, ok := claims["username"].(string); ok {
 			c.Locals("username", username)
@@ -107,17 +133,11 @@ func Protected() fiber.Handler {
 			c.Locals("username", "user")
 		}
 
-		if r, hasRole := claims["role"].(string); hasRole {
-			c.Locals("role", r)
-		} else {
-			c.Locals("role", "USER")
-		}
-
 		return c.Next()
 	}
 }
 
-// AdminOnly middleware enforces strict Role-Based Access Control (RBAC) for ADMIN role only
+// AdminOnly middleware enforces Role-Based Access Control for ADMIN role
 func AdminOnly() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Check if request is authenticated
@@ -148,11 +168,29 @@ func AdminOnly() fiber.Handler {
 			})
 		}
 
-		role, _ := claims["role"].(string)
-		if strings.ToUpper(strings.TrimSpace(role)) != "ADMIN" {
-			return c.Status(403).JSON(fiber.Map{
-				"error": "Akses Ditolak (RBAC): Portal Admin hanya dapat diakses oleh akun dengan Hak Akses ADMIN.",
+		userIdFloat, ok := claims["user_id"].(float64)
+		if !ok || userIdFloat <= 0 {
+			return c.Status(401).JSON(fiber.Map{
+				"error": "Akses ditolak: User ID tidak valid dalam token.",
 			})
+		}
+		userID := uint(userIdFloat)
+
+		// Verify active admin status in DB
+		if database.DB != nil {
+			var adminUser models.User
+			if err := database.DB.Select("id, is_active, role").Where("id = ?", userID).First(&adminUser).Error; err != nil || !adminUser.IsActive || strings.ToUpper(strings.TrimSpace(adminUser.Role)) != "ADMIN" {
+				return c.Status(403).JSON(fiber.Map{
+					"error": "Akses Ditolak (RBAC): Portal Admin hanya dapat diakses oleh akun ADMIN yang aktif.",
+				})
+			}
+		} else {
+			role, _ := claims["role"].(string)
+			if strings.ToUpper(strings.TrimSpace(role)) != "ADMIN" {
+				return c.Status(403).JSON(fiber.Map{
+					"error": "Akses Ditolak (RBAC): Portal Admin hanya dapat diakses oleh akun dengan Hak Akses ADMIN.",
+				})
+			}
 		}
 
 		return c.Next()

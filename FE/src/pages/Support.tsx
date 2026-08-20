@@ -26,18 +26,38 @@ export function Support() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+
+    const trimmedName = name.trim()
+    const trimmedEmail = email.trim()
+    const trimmedMessage = message.trim()
+
+    if (!trimmedName || !trimmedEmail || !trimmedMessage) {
+      toast.error('Validasi Gagal', 'Nama, Email, dan Pesan wajib diisi.')
+      return
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      toast.error('Validasi Gagal', 'Format email tidak valid.')
+      return
+    }
+
+    if (trimmedName.length > 100 || trimmedMessage.length > 2000) {
+      toast.error('Validasi Gagal', 'Panjang karakter melebihi batas maksimal.')
+      return
+    }
+
     setSubmitting(true)
 
-    const subject = `[Atheric AI Support] ${CATEGORY_LABELS[category]} - dari ${name}`
+    const subject = `[Atheric AI Support] ${CATEGORY_LABELS[category]} - dari ${trimmedName}`
     
     try {
       // Send to Backend DB
       await submitSupportTicketApi({
-        name,
-        email,
+        name: trimmedName,
+        email: trimmedEmail,
         subject,
         category: CATEGORY_LABELS[category] || category,
-        message,
+        message: trimmedMessage,
       })
       toast.success('Tiket terisi!', 'Tiket bantuan berhasil dicatat di Backend database Atheric AI.')
     } catch (err: any) {

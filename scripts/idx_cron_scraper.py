@@ -301,11 +301,8 @@ def sync_to_vps_api(stocks_payload: list) -> bool:
         return False
 
     if not sync_key:
-        print("[SYNC WARN] VPS_SYNC_KEY / SYNC_SECRET_KEY tidak dikonfigurasi. Sinkronisasi dibatalkan demi keamanan.", file=sys.stderr)
+        print("[SYNC WARN] VPS_SYNC_KEY / SYNC_SECRET_KEY tidak diset. Sinkronisasi dibatalkan.", file=sys.stderr)
         return False
-
-    if vps_url.startswith("http://") and not ("localhost" in vps_url or "127.0.0.1" in vps_url):
-        print("[SYNC NOTICE] Koneksi menggunakan HTTP standar. Disarankan menggunakan HTTPS di production demi keamanan data.", file=sys.stderr)
 
     endpoint = "/api/sync/market"
     full_url = f"{vps_url}{endpoint}"

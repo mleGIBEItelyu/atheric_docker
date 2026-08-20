@@ -380,10 +380,10 @@ export async function fetchForecast(ticker = 'BBCA', range = '3M'): Promise<Fore
   }
 }
 
-export async function fetchTarget(ticker = 'BBCA'): Promise<TargetData> {
-  const cacheKey = `target_${ticker}`
+export async function fetchTarget(ticker = 'BBCA', range = '1M'): Promise<TargetData> {
+  const cacheKey = `target_${ticker}_${range}`
   try {
-    const res = await fetch(`${BASE_URL}/api/target/${ticker}`, {
+    const res = await fetch(`${BASE_URL}/api/target/${ticker}?range=${encodeURIComponent(range)}`, {
       headers: getAuthHeaders(),
     })
     if (res.ok) {

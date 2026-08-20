@@ -14,6 +14,7 @@ import (
 	"math"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
@@ -40,6 +41,11 @@ func DoubleSHA256(data []byte) []byte {
 	return second[:]
 }
 
+var (
+	ephemeralSecpSeed     []byte
+	ephemeralSecpSeedOnce sync.Once
+)
+
 // GetBitcoinMasterPrivateKey derives the node's Secp256k1 private key from environment secrets
 func GetBitcoinMasterPrivateKey() *secp256k1.PrivateKey {
 	raw := os.Getenv("GENESIS_ENCRYPTION_KEY")
@@ -49,12 +55,19 @@ func GetBitcoinMasterPrivateKey() *secp256k1.PrivateKey {
 	if raw == "" {
 		raw = os.Getenv("JWT_SECRET")
 	}
-	if raw == "" {
-		raw = "atheric-bitcoin-secp256k1-master-seed"
+	if raw != "" {
+		seed := DoubleSHA256([]byte(raw))
+		return secp256k1.PrivKeyFromBytes(seed)
 	}
 
-	seed := DoubleSHA256([]byte(raw))
-	return secp256k1.PrivKeyFromBytes(seed)
+	ephemeralSecpSeedOnce.Do(func() {
+		ephemeralSecpSeed = make([]byte, 32)
+		if _, err := rand.Read(ephemeralSecpSeed); err != nil {
+			ephemeralSecpSeed = DoubleSHA256([]byte(strconv.FormatInt(time.Now().UnixNano(), 10)))
+		}
+	})
+
+	return secp256k1.PrivKeyFromBytes(ephemeralSecpSeed)
 }
 
 // GetCurrentTimeSlot calculates discrete time bucket index for rolling keys

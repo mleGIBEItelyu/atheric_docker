@@ -6,7 +6,7 @@ export const stockKeys = {
   all: ['stocks'] as const,
   stock: (ticker: string) => [...stockKeys.all, 'detail', ticker] as const,
   forecast: (ticker: string, range: string) => [...stockKeys.all, 'forecast', ticker, range] as const,
-  target: (ticker: string) => [...stockKeys.all, 'target', ticker] as const,
+  target: (ticker: string, range: string) => [...stockKeys.all, 'target', ticker, range] as const,
   keylevels: (ticker: string) => [...stockKeys.all, 'keylevels', ticker] as const,
   sentiment: (ticker: string) => [...stockKeys.all, 'sentiment', ticker] as const,
   synthesis: (ticker: string) => [...stockKeys.all, 'synthesis', ticker] as const,
@@ -34,10 +34,10 @@ export function useForecast(ticker = 'BBCA', range = '3M') {
 }
 
 // Target Harga & Rekomendasi Dinamis Harian
-export function useTarget(ticker = 'BBCA') {
+export function useTarget(ticker = 'BBCA', range = '1M') {
   return useQuery({
-    queryKey: stockKeys.target(ticker),
-    queryFn: () => fetchTarget(ticker),
+    queryKey: stockKeys.target(ticker, range),
+    queryFn: () => fetchTarget(ticker, range),
     staleTime: 10 * 60 * 1000,
   })
 }

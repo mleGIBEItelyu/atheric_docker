@@ -5,6 +5,8 @@ services:
       dockerfile: Dockerfile
     container_name: atheric_genesis_service
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "127.0.0.1:8000:8000"
     volumes:
@@ -12,8 +14,8 @@ services:
     environment:
       - PORT=8000
       - MARKET_DB_PATH=/app/data/idx_scraped_data.db
-      - GENESIS_ENCRYPTION_KEY=${GENESIS_ENCRYPTION_KEY:-${JWT_SECRET:-atheric_genesis_prod_master_salt_2026}}
-      - JWT_SECRET=${JWT_SECRET:-atheric_genesis_prod_master_salt_2026}
+      - GENESIS_ENCRYPTION_KEY=${GENESIS_ENCRYPTION_KEY}
+      - JWT_SECRET=${JWT_SECRET}
     networks:
       - atheric-net
     healthcheck:
@@ -34,6 +36,8 @@ services:
       dockerfile: Dockerfile
     container_name: atheric_backend
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "127.0.0.1:5000:5000"
     volumes:
@@ -43,14 +47,14 @@ services:
       - DB_PATH=/app/data/atheric_app.db
       - MARKET_DB_PATH=/app/data/idx_scraped_data.db
       - GENESIS_API_URL=http://genesis-service:8000
-      - GENESIS_ENCRYPTION_KEY=${GENESIS_ENCRYPTION_KEY:-${JWT_SECRET:-atheric_genesis_prod_master_salt_2026}}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-https://atheric.id,http://localhost,http://localhost:80,http://localhost:3000,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:80,http://127.0.0.1:3000,http://127.0.0.1:5173}
+      - GENESIS_ENCRYPTION_KEY=${GENESIS_ENCRYPTION_KEY}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS}
       - SYNC_SECRET_KEY=${SYNC_SECRET_KEY}
-      - JWT_SECRET=${JWT_SECRET:-atheric_ai_super_secret_jwt_key_2026_change_in_prod}
+      - JWT_SECRET=${JWT_SECRET}
       - RESEND_API_KEY=${RESEND_API_KEY}
-      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-Atheric AI <onboarding@resend.dev>}
+      - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-2.0-flash}
+      - GEMINI_MODEL=${GEMINI_MODEL}
     depends_on:
       genesis-service:
         condition: service_healthy
@@ -74,6 +78,8 @@ services:
       dockerfile: Dockerfile
     container_name: atheric_frontend
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "80:80"
       - "443:443"

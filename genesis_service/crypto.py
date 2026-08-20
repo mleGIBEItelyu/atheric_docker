@@ -18,9 +18,11 @@ try:
 except ImportError:
     _HAS_AESGCM = False
 
-MASTER_KEY = os.environ.get(
-    "GENESIS_ENCRYPTION_KEY",
-    os.environ.get("GENESIS_DYNAMIC_KEY_MASTER", os.environ.get("JWT_SECRET", "atheric_genesis_prod_master_salt_2026"))
+MASTER_KEY = (
+    os.environ.get("GENESIS_ENCRYPTION_KEY")
+    or os.environ.get("GENESIS_DYNAMIC_KEY_MASTER")
+    or os.environ.get("JWT_SECRET")
+    or os.urandom(32).hex()
 )
 
 def derive_rolling_key(epoch_window: int = 60, offset: int = 0) -> bytes:

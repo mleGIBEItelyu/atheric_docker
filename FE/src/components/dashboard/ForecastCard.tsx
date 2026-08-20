@@ -3,10 +3,23 @@ import { ForecastChart } from './ForecastChart'
 import { InfoTip } from '@/components/common/InfoTip'
 import { useForecast, useKeyLevels } from '@/hooks/useStock'
 
-interface Props { ticker: string }
+interface Props {
+  ticker: string
+  range?: string
+  onRangeChange?: (range: string) => void
+}
 
-export function ForecastCard({ ticker }: Props) {
-  const [range, setRange] = useState('1M')
+export function ForecastCard({ ticker, range: controlledRange, onRangeChange }: Props) {
+  const [internalRange, setInternalRange] = useState('1M')
+  const range = controlledRange ?? internalRange
+  const handleRangeChange = (newRange: string) => {
+    if (onRangeChange) {
+      onRangeChange(newRange)
+    } else {
+      setInternalRange(newRange)
+    }
+  }
+
   const { data: forecast } = useForecast(ticker, range)
   const { data: keyLevels = [] } = useKeyLevels(ticker)
 
@@ -34,7 +47,7 @@ export function ForecastCard({ ticker }: Props) {
             <button
               key={r.key}
               className={`range-btn${r.key === range ? ' active' : ''}`}
-              onClick={() => setRange(r.key)}
+              onClick={() => handleRangeChange(r.key)}
               title={`Proyeksi ${r.key === '1M' ? '1 Bulan' : '3 Bulan'} ke depan`}
             >
               {r.label}
