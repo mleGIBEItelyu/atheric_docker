@@ -302,16 +302,29 @@ def sync_to_vps_api(stocks_payload: list) -> bool:
         method="POST"
     )
 
-    try:
-        print(f"\n[SYNC] Mengirim {len(stocks_payload)} data saham ke VPS ({full_url})...")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            res = json.loads(resp.read().decode("utf-8"))
-            print(f"[SYNC OK] Berhasil tersinkronisasi ke VPS! Status: {resp.status} - {res.get('message', 'Success')}")
-            return True
-    except urllib.error.HTTPError as e:
-        body = e.read().decode() if e.fp else ""
-        print(f"[SYNC ERROR] Gagal mengirim ke {full_url} (HTTP {e.code}): {body}", file=sys.stderr)
-        return False
+    max_retries = 3
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"\n[SYNC] Mengirim {len(stocks_payload)} data saham ke VPS ({full_url}) [Percobaan {attempt}/{max_retries}]...")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                res = json.loads(resp.read().decode("utf-8"))
+                print(f"[SYNC OK] Berhasil tersinkronisasi ke VPS! Status: {resp.status} - {res.get('message', 'Success')}")
+                return True
+        except urllib.error.HTTPError as e:
+            body = e.read().decode() if e.fp else ""
+            print(f"[SYNC ERROR] Gagal mengirim ke {full_url} (HTTP {e.code}): {body}", file=sys.stderr)
+            return False
+        except (urllib.error.URLError, TimeoutError, Exception) as e:
+            print(f"[SYNC WARN] Gagal menghubungi VPS ({full_url}) pada percobaan {attempt}: {e}", file=sys.stderr)
+            if attempt < max_retries:
+                import time
+                time.sleep(3 * attempt)
+            else:
+                print(f"[SYNC FATAL] Seluruh percobaan koneksi ke VPS ({full_url}) gagal/timeout.", file=sys.stderr)
+                return False
+    return False
+
+
 def sync_news_to_vps_api(news_payload: list) -> bool:
     """Send latest scraped stock news to VPS Backend API."""
     vps_url = os.environ.get("VPS_SYNC_URL", "").rstrip("/")
@@ -339,15 +352,24 @@ def sync_news_to_vps_api(news_payload: list) -> bool:
         method="POST"
     )
 
-    try:
-        print(f"\n[SYNC NEWS] Mengirim {len(news_payload)} berita emiten ke VPS ({full_url})...")
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            res = json.loads(resp.read().decode("utf-8"))
-            print(f"[SYNC NEWS OK] Berhasil tersinkronisasi ke VPS! Status: {resp.status} - {res.get('status', 'Success')}")
-            return True
-    except Exception as e:
-        print(f"[SYNC NEWS WARN] Gagal menghubungi endpoint berita VPS ({full_url}): {e}")
-        return False
+    max_retries = 2
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"\n[SYNC NEWS] Mengirim {len(news_payload)} berita emiten ke VPS ({full_url}) [Percobaan {attempt}/{max_retries}]...")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                res = json.loads(resp.read().decode("utf-8"))
+                print(f"[SYNC NEWS OK] Berhasil tersinkronisasi ke VPS! Status: {resp.status} - {res.get('status', 'Success')}")
+                return True
+        except urllib.error.HTTPError as e:
+            body = e.read().decode() if e.fp else ""
+            print(f"[SYNC NEWS ERROR] Gagal mengirim berita ke {full_url} (HTTP {e.code}): {body}", file=sys.stderr)
+            return False
+        except (urllib.error.URLError, TimeoutError, Exception) as e:
+            print(f"[SYNC NEWS WARN] Gagal menghubungi endpoint berita VPS ({full_url}) pada percobaan {attempt}: {e}")
+            if attempt < max_retries:
+                import time
+                time.sleep(3)
+    return False
 
 def build_ticker_news(stocks_payload: list) -> list:
     """Generate and contextualize real-time news headlines for all scraped stocks."""

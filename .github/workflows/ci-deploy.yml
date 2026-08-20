@@ -90,18 +90,11 @@ jobs:
               cp .env.example .env
             fi
 
-            echo "🧹 [4/6] Cleaning up old or conflicting containers..."
-            sudo docker compose down --remove-orphans 2>/dev/null || true
-            sudo docker rm -f atheric_frontend atheric_backend atheric_genesis_service 2>/dev/null || true
+            echo "🐳 [4/6] Building images (Zero-Downtime: container lama tetap melayani traffic)..."
+            sudo docker compose build
 
-            echo "🐳 [5/6] Building & launching containers..."
-            sudo docker compose up -d --build --remove-orphans --force-recreate || {
-              echo "⚠️ First attempt encountered an issue. Pruning builder cache and retrying..."
-              sudo docker builder prune -f || true
-              sudo docker compose down --remove-orphans || true
-              sudo docker rm -f atheric_frontend atheric_backend atheric_genesis_service 2>/dev/null || true
-              sudo docker compose up -d --build --remove-orphans --force-recreate
-            }
+            echo "🚀 [5/6] Switching seamlessly to updated containers..."
+            sudo docker compose up -d --remove-orphans
 
             echo "🔍 [6/6] Verifying live container health..."
             sleep 8
