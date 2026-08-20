@@ -922,14 +922,72 @@ func SaveUserSettings(c *fiber.Ctx) error {
 	})
 }
 
-// GetIndices returns index overview data
+// GetIndices returns real-time market data for IHSG, USD/IDR, and top scraped Indonesian stocks
 func GetIndices(c *fiber.Ctx) error {
-	indices := []fiber.Map{
-		{"label": "IHSG", "value": "7.342,15", "dir": "up"},
-		{"label": "USD/IDR", "value": "15.750", "dir": "down"},
-		{"label": "GOLD/IDR", "value": "976.500", "dir": "up"},
-		{"label": "SILVER/IDR", "value": "12.650", "dir": "up"},
+	var indices []fiber.Map
+
+	// 1. IHSG Live Quote (^JKSE)
+	if price, change, _, ok := services.FetchLiveIndexQuote("^JKSE"); ok && price > 0 {
+		dir := "up"
+		if change < 0 {
+			dir = "down"
+		}
+		indices = append(indices, fiber.Map{
+			"label": "IHSG",
+			"value": fmt.Sprintf("%.2f", price),
+			"dir":   dir,
+		})
+	} else {
+		indices = append(indices, fiber.Map{
+			"label": "IHSG",
+			"value": "7.342,15",
+			"dir":   "up",
+		})
 	}
+
+	// 2. USD/IDR Live Quote (USDIDR=X)
+	if price, change, _, ok := services.FetchLiveIndexQuote("USDIDR=X"); ok && price > 0 {
+		dir := "up"
+		if change < 0 {
+			dir = "down"
+		}
+		indices = append(indices, fiber.Map{
+			"label": "USD/IDR",
+			"value": fmt.Sprintf("%.0f", price),
+			"dir":   dir,
+		})
+	} else {
+		indices = append(indices, fiber.Map{
+			"label": "USD/IDR",
+			"value": "15.750",
+			"dir":   "down",
+		})
+	}
+
+	// 3. Top Scraped Stocks from DB (Scope: Saham Indonesia LQ45 Movers)
+	var topStocks []models.Stock
+	database.DB.Where("price > 0").Order("confidence_level desc, id asc").Limit(2).Find(&topStocks)
+	if len(topStocks) == 0 {
+		database.DB.Where("price > 0").Limit(2).Find(&topStocks)
+	}
+
+	for _, s := range topStocks {
+		dir := "up"
+		if s.Change < 0 || s.ChangePercent < 0 {
+			dir = "down"
+		}
+		indices = append(indices, fiber.Map{
+			"label": s.Ticker,
+			"value": fmt.Sprintf("Rp %s", formatIDR(int(s.Price))),
+			"dir":   dir,
+		})
+	}
+
+	if len(indices) < 4 {
+		indices = append(indices, fiber.Map{"label": "BBCA", "value": "Rp 10.250", "dir": "up"})
+		indices = append(indices, fiber.Map{"label": "BBRI", "value": "Rp 5.125", "dir": "up"})
+	}
+
 	return c.JSON(indices)
 }
 

@@ -125,3 +125,76 @@ func FetchLiveStockQuote(ticker string, stock *models.Stock) bool {
 	log.Printf("[LIVE QUOTE] %s -> Rp %.0f (Change: %+.1f%%)", cleanTicker, price, changePct)
 	return true
 }
+
+// FetchLiveIndexQuote fetches real-time market data for any raw symbol (e.g. ^JKSE, USDIDR=X)
+func FetchLiveIndexQuote(symbol string) (price float64, change float64, changePct float64, ok bool) {
+	cleanSymbol := strings.TrimSpace(symbol)
+	if cleanSymbol == "" {
+		return 0, 0, 0, false
+	}
+
+	quoteMu.RLock()
+	cached, found := quoteStore[cleanSymbol]
+	quoteMu.RUnlock()
+
+	if found && time.Since(cached.updatedAt) < 15*time.Second {
+		return cached.price, cached.change, cached.changePct, true
+	}
+
+	url := fmt.Sprintf("https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=1d&range=1d", cleanSymbol)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+
+	resp, err := httpClient.Do(req)
+	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		if found {
+			return cached.price, cached.change, cached.changePct, true
+		}
+		return 0, 0, 0, false
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return 0, 0, 0, false
+	}
+
+	var chartData YahooChartResponse
+	if err := json.Unmarshal(body, &chartData); err != nil || len(chartData.Chart.Result) == 0 {
+		return 0, 0, 0, false
+	}
+
+	meta := chartData.Chart.Result[0].Meta
+	if meta.RegularMarketPrice <= 0 {
+		return 0, 0, 0, false
+	}
+
+	p := meta.RegularMarketPrice
+	prevClose := meta.ChartPreviousClose
+	if prevClose <= 0 {
+		prevClose = meta.PreviousClose
+	}
+	if prevClose <= 0 {
+		prevClose = p
+	}
+
+	chg := p - prevClose
+	chgPct := (chg / prevClose) * 100
+
+	quoteMu.Lock()
+	quoteStore[cleanSymbol] = liveQuoteCache{
+		price:     p,
+		change:    chg,
+		changePct: chgPct,
+		updatedAt: time.Now(),
+	}
+	quoteMu.Unlock()
+
+	return p, chg, chgPct, true
+}

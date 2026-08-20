@@ -2,7 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import { fetchIndices, fetchRankingHighlights, fetchRankingRows } from '@/services/api'
 
 export function useIndices() {
-  return useQuery({ queryKey: ['indices'], queryFn: fetchIndices, staleTime: 10_000 })
+  return useQuery({
+    queryKey: ['indices'],
+    queryFn: fetchIndices,
+    staleTime: 10_000,
+    refetchInterval: 15_000,
+  })
 }
 
 export function useRankingHighlights() {

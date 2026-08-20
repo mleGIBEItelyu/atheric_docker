@@ -581,8 +581,8 @@ export async function fetchIndices(): Promise<IndexData[]> {
   return [
     { label: 'IHSG', value: '7.342,15', dir: 'up' },
     { label: 'USD/IDR', value: '15.750', dir: 'down' },
-    { label: 'GOLD/IDR', value: '976.500', dir: 'up' },
-    { label: 'SILVER/IDR', value: '12.650', dir: 'up' },
+    { label: 'BBCA', value: 'Rp 10.250', dir: 'up' },
+    { label: 'BBRI', value: 'Rp 5.125', dir: 'up' },
   ]
 }
 
