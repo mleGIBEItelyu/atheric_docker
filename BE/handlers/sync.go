@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"log"
 	"os"
@@ -14,23 +15,28 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// verifySyncKey checks secret token from X-Sync-Key or Authorization header
+// verifySyncKey checks secret token from X-Sync-Key or Authorization header with constant-time comparison
 func verifySyncKey(c *fiber.Ctx) bool {
-	syncSecret := os.Getenv("SYNC_SECRET_KEY")
+	syncSecret := strings.TrimSpace(os.Getenv("SYNC_SECRET_KEY"))
 	if syncSecret == "" {
-		syncSecret = os.Getenv("JWT_SECRET")
-		if syncSecret == "" {
-			syncSecret = "atheric_sync_secure_key_2026"
-		}
+		syncSecret = strings.TrimSpace(os.Getenv("JWT_SECRET"))
+	}
+	if syncSecret == "" {
+		log.Println("[SECURITY ALERT] SYNC_SECRET_KEY/JWT_SECRET is not configured on server. Rejecting sync.")
+		return false
 	}
 
-	key := c.Get("X-Sync-Key")
+	key := strings.TrimSpace(c.Get("X-Sync-Key"))
 	if key == "" {
 		auth := c.Get("Authorization")
-		key = strings.TrimPrefix(auth, "Bearer ")
+		key = strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
 	}
 
-	return key != "" && key == syncSecret
+	if key == "" {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(key), []byte(syncSecret)) == 1
 }
 
 // SyncMarketDataPayload represents data sent by TrainerProduksiML scraper

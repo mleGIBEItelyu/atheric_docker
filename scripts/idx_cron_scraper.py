@@ -293,12 +293,19 @@ def init_db_schema(conn: sqlite3.Connection):
 
 def sync_to_vps_api(stocks_payload: list) -> bool:
     """Send latest stock prices to VPS Backend API."""
-    vps_url = os.environ.get("VPS_SYNC_URL", "").rstrip("/")
-    sync_key = os.environ.get("VPS_SYNC_KEY", os.environ.get("SYNC_SECRET_KEY", "7vK9mQ2xR8pL4zN6tY3wF1cH5jD0sA8eB6uG9kP2"))
+    vps_url = os.environ.get("VPS_SYNC_URL", "").strip().rstrip("/")
+    sync_key = (os.environ.get("VPS_SYNC_KEY") or os.environ.get("SYNC_SECRET_KEY") or "").strip()
 
     if not vps_url:
         print("[SYNC INFO] VPS_SYNC_URL tidak diset. Sinkronisasi API dilewati.")
         return False
+
+    if not sync_key:
+        print("[SYNC WARN] VPS_SYNC_KEY / SYNC_SECRET_KEY tidak dikonfigurasi. Sinkronisasi dibatalkan demi keamanan.", file=sys.stderr)
+        return False
+
+    if vps_url.startswith("http://") and not ("localhost" in vps_url or "127.0.0.1" in vps_url):
+        print("[SYNC NOTICE] Koneksi menggunakan HTTP standar. Disarankan menggunakan HTTPS di production demi keamanan data.", file=sys.stderr)
 
     endpoint = "/api/sync/market"
     full_url = f"{vps_url}{endpoint}"
@@ -347,10 +354,10 @@ def sync_to_vps_api(stocks_payload: list) -> bool:
 
 def sync_news_to_vps_api(news_payload: list) -> bool:
     """Send latest scraped stock news to VPS Backend API."""
-    vps_url = os.environ.get("VPS_SYNC_URL", "").rstrip("/")
-    sync_key = os.environ.get("VPS_SYNC_KEY", os.environ.get("SYNC_SECRET_KEY", "7vK9mQ2xR8pL4zN6tY3wF1cH5jD0sA8eB6uG9kP2"))
+    vps_url = os.environ.get("VPS_SYNC_URL", "").strip().rstrip("/")
+    sync_key = (os.environ.get("VPS_SYNC_KEY") or os.environ.get("SYNC_SECRET_KEY") or "").strip()
 
-    if not vps_url:
+    if not vps_url or not sync_key:
         return False
 
     endpoint = "/api/sync/news"

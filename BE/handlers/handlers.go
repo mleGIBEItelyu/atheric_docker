@@ -1369,7 +1369,7 @@ func RevokeDeviceSession(c *fiber.Ctx) error {
 	if err := database.DB.Where("user_id = ? AND is_current = ?", userID, true).First(&currentSession).Error; err == nil {
 		if currentSession.FirstLoginDaysAgo < 7 {
 			return c.Status(400).JSON(fiber.Map{
-				"error": "Perangkat ini baru pertama kali masuk " + string(rune(currentSession.FirstLoginDaysAgo)) + " hari lalu. Anda harus menunggu 7 hari (total 1 minggu) sebelum mencabut sesi perangkat lain.",
+				"error": fmt.Sprintf("Perangkat ini baru pertama kali masuk %d hari lalu. Anda harus menunggu 7 hari (total 1 minggu) sebelum mencabut sesi perangkat lain.", currentSession.FirstLoginDaysAgo),
 			})
 		}
 	}
