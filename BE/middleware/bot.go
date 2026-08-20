@@ -29,6 +29,11 @@ var (
 // BotProtection detects automated vulnerability scanners and bot scrapers
 func BotProtection() fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		// Allow internal sync API endpoints
+		if strings.HasPrefix(c.Path(), "/api/sync/") {
+			return c.Next()
+		}
+
 		userAgent := strings.ToLower(c.Get("User-Agent"))
 
 		// Block empty user agent on mutating methods
