@@ -20,8 +20,8 @@ services:
       test: [ "CMD-SHELL", "curl -f http://127.0.0.1:8000/health > /dev/null 2>&1 || wget -qO- http://127.0.0.1:8000/health > /dev/null 2>&1 || exit 1" ]
       interval: 10s
       timeout: 5s
-      retries: 3
-      start_period: 5s
+      retries: 5
+      start_period: 20s
 
   backend:
     build:
@@ -39,7 +39,8 @@ services:
       - MARKET_DB_PATH=/app/data/idx_scraped_data.db
       - GENESIS_API_URL=http://genesis-service:8000
       - GENESIS_ENCRYPTION_KEY=${GENESIS_ENCRYPTION_KEY:-${JWT_SECRET:-atheric_genesis_prod_master_salt_2026}}
-      - ALLOWED_ORIGINS=http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:80,http://127.0.0.1:5173
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1,http://127.0.0.1:80,http://127.0.0.1:5173}
+      - SYNC_SECRET_KEY=${SYNC_SECRET_KEY}
       - JWT_SECRET=${JWT_SECRET:-atheric_ai_super_secret_jwt_key_2026_change_in_prod}
       - RESEND_API_KEY=${RESEND_API_KEY}
       - RESEND_FROM_EMAIL=${RESEND_FROM_EMAIL:-Atheric AI <onboarding@resend.dev>}

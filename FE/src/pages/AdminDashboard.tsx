@@ -102,7 +102,7 @@ const CrossIcon = () => (
 /* ------------------------------------------------------------------ */
 /* Helpers                                                              */
 /* ------------------------------------------------------------------ */
-const BASE_URL = import.meta.env.VITE_API_URL ?? (typeof window !== 'undefined' ? `${window.location.protocol}//${window.location.hostname}:5000` : 'http://localhost:5000')
+const BASE_URL = import.meta.env.VITE_API_URL || ''
 
 function formatUptime(seconds?: number): string {
   if (!seconds || seconds <= 0) return "1m"
@@ -122,7 +122,9 @@ function useWsTraffic() {
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
-    const wsUrl = BASE_URL.replace(/^http/, "ws") + "/api/ws/monitor"
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsBase = BASE_URL ? BASE_URL.replace(/^http/, 'ws') : `${wsProtocol}//${window.location.host}`
+    const wsUrl = `${wsBase}/api/ws/monitor`
     const connect = () => {
       try {
         const ws = new WebSocket(wsUrl + (token ? `?token=${token}` : ""))

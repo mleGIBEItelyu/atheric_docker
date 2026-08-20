@@ -11,11 +11,7 @@ import type {
   IndexData,
 } from '@/types'
 
-const BASE_URL =
-  import.meta.env.VITE_API_URL ||
-  (typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:5000`
-    : 'http://localhost:5000')
+const BASE_URL = import.meta.env.VITE_API_URL || ''
 
 function getAuthHeaders(token?: string | null): Record<string, string> {
   const headers: Record<string, string> = {
