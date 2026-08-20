@@ -70,8 +70,12 @@ jobs:
           port: ${{ secrets.VPS_PORT || 22 }}
           script: |
             set -e
-            APP_DIR="${{ secrets.VPS_APP_DIR || format('/home/{0}', secrets.VPS_USER) }}"
+            APP_DIR="${{ secrets.VPS_APP_DIR || format('/home/{0}/athericML', secrets.VPS_USER) }}"
             echo "🚀 [DEPLOY] Navigating to $APP_DIR..."
+            if [ ! -d "$APP_DIR" ]; then
+              echo "Creating $APP_DIR and cloning repo..."
+              git clone https://github.com/mleGIBEItelyu/atheric_docker.git "$APP_DIR"
+            fi
             cd "$APP_DIR"
             echo "🔄 [GIT] Pulling latest main branch..."
             git pull origin main
