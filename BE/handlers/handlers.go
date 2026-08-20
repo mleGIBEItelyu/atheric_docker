@@ -958,8 +958,11 @@ func GetForecast(c *fiber.Ctx) error {
 
 	periodDate := time.Now().Format("2006-01-02") + "_" + rangeParam
 
-	// 1. Check DB Cache
+	// 1. Check DB Cache & Validate Price Alignment
 	var cached models.ModelForecastCache
+	var stock models.Stock
+	hasStock := database.DB.Where("ticker = ?", ticker).First(&stock).Error == nil && stock.Price > 0
+
 	if err := database.DB.Where("ticker = ? AND period_month = ?", ticker, periodDate).First(&cached).Error; err == nil {
 		if time.Now().Before(cached.ExpiresAt) && cached.ForecastJSON != "" {
 			var intActual, intForecast, intCIUpper, intCILower []int
@@ -968,28 +971,39 @@ func GetForecast(c *fiber.Ctx) error {
 			_ = json.Unmarshal([]byte(cached.CIUpperJSON), &intCIUpper)
 			_ = json.Unmarshal([]byte(cached.CILowerJSON), &intCILower)
 
-			return c.JSON(fiber.Map{
-				"ticker":      cached.Ticker,
-				"model":       cached.ModelName,
-				"horizonDays": cached.HorizonDays,
-				"signal":      cached.Signal,
-				"actual":      intActual,
-				"forecast":    intForecast,
-				"ciUpper":     intCIUpper,
-				"ciLower":     intCILower,
-				"cached":      true,
-				"periodDate":  cached.PeriodMonth,
-				"range":       rangeParam,
-			})
+			// Invalidate cache if cached start price is out of sync with real current stock price (> 5% drift)
+			cacheValid := true
+			if hasStock && len(intActual) > 0 {
+				cachedStartPrice := float64(intActual[len(intActual)-1])
+				if math.Abs(cachedStartPrice-stock.Price)/stock.Price > 0.05 {
+					cacheValid = false
+					database.DB.Delete(&cached)
+				}
+			}
+
+			if cacheValid {
+				return c.JSON(fiber.Map{
+					"ticker":      cached.Ticker,
+					"model":       cached.ModelName,
+					"horizonDays": cached.HorizonDays,
+					"signal":      cached.Signal,
+					"actual":      intActual,
+					"forecast":    intForecast,
+					"ciUpper":     intCIUpper,
+					"ciLower":     intCILower,
+					"cached":      true,
+					"periodDate":  cached.PeriodMonth,
+					"range":       rangeParam,
+				})
+			}
 		}
 	}
 
-	// 2. Cache Miss or New Day: Compute from Model
+	// 2. Cache Miss or Out-of-sync: Compute Fresh from Model
 	price := 10250.0
 	signal := "BUY"
 	confidence := 86.0
-	var stock models.Stock
-	if err := database.DB.Where("ticker = ?", ticker).First(&stock).Error; err == nil && stock.Price > 0 {
+	if hasStock {
 		price = stock.Price
 		signal = stock.Signal
 		if stock.ConfidenceLevel > 0 {
