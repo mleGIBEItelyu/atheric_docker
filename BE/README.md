@@ -8,11 +8,9 @@ Backend ini dirancang **Production Ready**, aman, dan sangat efisien agar dapat 
 
 ## 🔐 Keamanan & Autentikasi (JWT Auth)
 
-- **Tanpa Register Publik**: Pendaftaran akun publik ditiadakan demi keamanan sistem. 
-- **Auto-Seeded Accounts**: Saat pertama kali aplikasi di-deploy, akun dasar otomatis dibuat secara otomatis dengan enkripsi **bcrypt**:
-  - 👑 **Admin**: Username: `admin` | Password: `admin123password`
-  - 👤 **User**: Username: `gibei_trader` | Password: `user123password`
-- **Admin User Management**: Pembuatan akun baru hanya dapat dilakukan oleh **Admin** melalui endpoint terproteksi `/api/admin/users`.
+- **Role-Based Access Control (RBAC)**: Mendukung role `ADMIN` dan `USER` dengan proteksi middleware JWT.
+- **Enkripsi Sandi**: Seluruh password akun di-hash menggunakan algoritma **bcrypt** (cost 10+).
+- **Admin User Management**: Manajemen pengguna dapat dikelola oleh Administrator melalui endpoint terproteksi `/api/admin/users`.
 - **JWT Protection**: Akses ke data privat seperti *watchlist* dan fitur *admin* mewajibkan *Header Authorization*: `Bearer <token_jwt>`.
 
 ---
@@ -30,8 +28,8 @@ Backend ini dirancang **Production Ready**, aman, dan sangat efisien agar dapat 
 #### Contoh Body `POST /api/auth/login`:
 ```json
 {
-  "username": "admin",
-  "password": "admin123password"
+  "username": "<your_username>",
+  "password": "<your_password>"
 }
 ```
 
@@ -56,8 +54,8 @@ Backend ini dirancang **Production Ready**, aman, dan sangat efisien agar dapat 
 ```json
 {
   "username": "trader_baru",
-  "email": "trader2@atheric.ai",
-  "password": "passwordAman123",
+  "email": "user@example.com",
+  "password": "<secure_password>",
   "role": "USER"
 }
 ```

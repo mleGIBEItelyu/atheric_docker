@@ -112,12 +112,12 @@ npm run dev
 
 ---
 
-## 🔑 Akun Demo Default
+## 🔐 Manajemen Autentikasi & Role
 
-| Role | Username | Password | Keterangan |
-| :--- | :--- | :--- | :--- |
-| **ADMIN** | `admin` | `admin123` | Akses penuh ke Admin Portal & WebSocket Traffic Monitor |
-| **USER** | `atheric_user` | `user123` | Akses terminal finansial, watchlist, dan AI chat |
+Atheric AI dilengkapi dengan sistem manajemen role pengguna:
+- **ADMIN**: Akses penuh ke Admin Portal, status performa sistem, dan manajemen pengguna.
+- **USER**: Akses ke terminal analisis finansial, proyeksi harga AI Genesis, watchlist, dan AI financial chat.
+- **Verifikasi OTP**: Registrasi akun baru diamankan dengan verifikasi One-Time Password (OTP) via email melalui integrasi Resend Email API.
 
 ---
 
