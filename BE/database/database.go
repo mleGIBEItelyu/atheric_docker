@@ -241,33 +241,27 @@ func SyncMarketDataToApp(appDB, mDB *gorm.DB) {
 	}
 }
 
-// Seed initial demo data for ADMIN and USER roles
+// Seed initial data for default ADMIN if database has no admin
 func seedInitialData(db *gorm.DB) {
-	adminHash, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
-	userHash, _ := bcrypt.GenerateFromPassword([]byte("user123"), bcrypt.DefaultCost)
-
-	demoUsers := []models.User{
-		{ID: uint(100000 + rand.Intn(899999)), Username: "admin", Email: "admin@atheric.ai", Password: string(adminHash), Role: "ADMIN", IsVerified: true, IsActive: true},
-		{ID: uint(100000 + rand.Intn(899999)), Username: "atheric_user", Email: "user@atheric.ai", Password: string(userHash), Role: "USER", IsVerified: true, IsActive: true},
-	}
-
-	for _, u := range demoUsers {
-		var existing models.User
-		if err := db.Where("username = ? OR email = ?", u.Username, u.Email).First(&existing).Error; err != nil {
-			db.Create(&u)
-		} else {
-			db.Model(&existing).Updates(map[string]interface{}{
-				"password":    u.Password,
-				"role":        u.Role,
-				"is_verified": true,
-				"is_active":   true,
-			})
-		}
-	}
-	log.Println("Synchronized Demo Accounts with ADMIN and USER roles (admin: admin123, atheric_user: user123)")
-
 	// Clean initial system logs
 	db.Where("action LIKE ?", "%INIT%").Delete(&models.ActivityLog{})
+
+	var adminCount int64
+	db.Model(&models.User{}).Where("role = ?", "ADMIN").Count(&adminCount)
+	if adminCount == 0 {
+		adminHash, _ := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+		defaultAdmin := models.User{
+			ID:         uint(100000 + rand.Intn(899999)),
+			Username:   "mlegibei",
+			Email:      "mlegibeitelu@gmail.com",
+			Password:   string(adminHash),
+			Role:       "ADMIN",
+			IsVerified: true,
+			IsActive:   true,
+		}
+		db.Create(&defaultAdmin)
+		log.Println("Seeded default admin account with email mlegibeitelu@gmail.com")
+	}
 
 	// Seed Stock market data if empty
 	var stockCount int64
