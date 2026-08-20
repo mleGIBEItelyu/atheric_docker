@@ -1,4 +1,4 @@
-# Atheric AI -- Go Backend API (Production Ready with JWT Auth)
+# Atheric AI - Go Backend API (Production Ready with JWT Auth)
 
 Layanan RESTful API backend untuk platform **Atheric AI** yang dibangun menggunakan bahasa pemrograman **Golang** dan framework **Go Fiber**, serta menggunakan **SQLite** sebagai *embedded database*.
 
